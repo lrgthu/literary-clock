@@ -28,6 +28,8 @@ class DeviceProfile:
     compact_line_width: float = 0.86
     normal_line_spacing: float = 1.16
     compact_line_spacing: float = 1.08
+    justify_body: bool = False
+    maximum_word_space_scale: float = 0.50
     show_date_by_default: bool = False
     date_scale: float = 0.72
     minimum_date_scale: float = 0.014
@@ -52,6 +54,7 @@ class DeviceProfile:
             self.compact_line_width,
             self.normal_line_spacing,
             self.compact_line_spacing,
+            self.maximum_word_space_scale,
             self.date_scale,
             self.minimum_date_scale,
             self.date_inset_x,
@@ -107,7 +110,7 @@ BUILTIN_PROFILES: dict[str, DeviceProfile] = {
         1448,
         1072,
         orientation="landscape",
-        safe_margin_x=0.085,
+        safe_margin_x=0.105,
         safe_margin_y=0.09,
         base_font_scale=0.043,
         attribution_scale=0.51,
@@ -115,12 +118,16 @@ BUILTIN_PROFILES: dict[str, DeviceProfile] = {
         minimum_body_scale=0.026,
         minimum_attribution_scale=0.019,
         maximum_quote_region=0.69,
-        preferred_line_width=0.81,
-        compact_line_width=0.86,
+        preferred_line_width=0.76,
+        compact_line_width=0.82,
+        normal_line_spacing=1.05,
+        compact_line_spacing=1.02,
+        justify_body=True,
+        maximum_word_space_scale=0.50,
         pixel_density_ppi=300,
         show_date_by_default=True,
-        date_scale=0.72,
-        minimum_date_scale=0.014,
+        date_scale=0.96,
+        minimum_date_scale=0.020,
         date_inset_x=0.05,
         date_inset_y=0.05,
     ),

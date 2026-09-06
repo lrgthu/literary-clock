@@ -100,6 +100,8 @@ class PillowRenderer:
                     font=font,
                     fill=fill,
                     anchor="ls",
+                    stroke_width=segment.stroke_width,
+                    stroke_fill=fill,
                 )
         for line in layout.attribution_lines:
             font = (

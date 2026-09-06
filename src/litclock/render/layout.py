@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from PIL import ImageFont
 
@@ -50,19 +50,32 @@ class EmphasisMetrics:
     scale: float
     font_size: int
     baseline_shift: int
+    stroke_width: int
 
 
-def time_emphasis_metrics(mode: TimeEmphasis, body_size: int) -> EmphasisMetrics:
+def time_emphasis_metrics(
+    mode: TimeEmphasis,
+    body_size: int,
+    *,
+    single_face_accent: bool = False,
+) -> EmphasisMetrics:
     """Return deterministic mixed-style metrics for a body font size."""
     if mode == TimeEmphasis.CLASSIC:
         scale, shift_ratio = 1.0, 0.0
     elif mode == TimeEmphasis.SUBTLE_LIFT:
         scale, shift_ratio = 1.10, 0.05
-    else:
+    elif mode == TimeEmphasis.EXPRESSIVE:
         scale, shift_ratio = 1.16, 0.075
+    else:
+        scale, shift_ratio = 1.10, 0.16
     font_size = max(body_size, round(body_size * scale))
     baseline_shift = 0 if shift_ratio == 0 else max(1, round(body_size * shift_ratio))
-    return EmphasisMetrics(mode, scale, font_size, baseline_shift)
+    stroke_width = (
+        max(1, round(body_size * 0.025))
+        if mode == TimeEmphasis.PICTURESQUE and single_face_accent
+        else 0
+    )
+    return EmphasisMetrics(mode, scale, font_size, baseline_shift, stroke_width)
 
 
 def _styled_line_geometry(
@@ -74,8 +87,14 @@ def _styled_line_geometry(
     """Return a collision-safe line height and the normal-text baseline offset."""
     regular_ascent, regular_descent = fonts.regular.getmetrics()
     highlight_ascent, highlight_descent = fonts.bold.getmetrics()
-    top_extent = max(regular_ascent, highlight_ascent + emphasis.baseline_shift)
-    bottom_extent = max(regular_descent, highlight_descent - emphasis.baseline_shift)
+    top_extent = max(
+        regular_ascent,
+        highlight_ascent + emphasis.baseline_shift + emphasis.stroke_width,
+    )
+    bottom_extent = max(
+        regular_descent,
+        highlight_descent - emphasis.baseline_shift + emphasis.stroke_width,
+    )
     ink_height = top_extent + bottom_extent
     styled_height = max(1, round(ink_height * spacing))
     leading = max(0, styled_height - ink_height)
@@ -91,6 +110,8 @@ def mixed_style_width(
     highlight_end: int,
     regular_font: ImageFont.FreeTypeFont,
     highlight_font: ImageFont.FreeTypeFont,
+    *,
+    highlight_stroke_width: int = 0,
 ) -> float:
     """Measure a source range with the highlight rendered in its own font."""
     if start >= end:
@@ -103,6 +124,7 @@ def mixed_style_width(
     styled_end = min(end, highlight_end)
     if styled_end > styled_start:
         width += text_width(highlight_font, text[styled_start:styled_end])
+        width += 2 * highlight_stroke_width
     after_start = max(start, min(end, highlight_end))
     if end > after_start:
         width += text_width(regular_font, text[after_start:end])
@@ -160,6 +182,7 @@ def _wrap_body(
     quote: RenderQuote,
     fonts: LoadedFonts,
     max_width: float,
+    emphasis: EmphasisMetrics,
 ) -> list[_RawLine]:
     def measure(start: int, end: int) -> float:
         return mixed_style_width(
@@ -170,6 +193,7 @@ def _wrap_body(
             quote.highlight_end,
             fonts.regular,
             fonts.bold,
+            highlight_stroke_width=emphasis.stroke_width,
         )
 
     lines: list[_RawLine] = []
@@ -239,7 +263,43 @@ def _segments_for_line(
     line_x: float,
     fonts: LoadedFonts,
     emphasis: EmphasisMetrics,
+    justify_to_width: float | None = None,
+    maximum_word_space: float | None = None,
 ) -> tuple[StyledSegment, ...]:
+    def picturesque_shift(source_position: int) -> int:
+        visible_index = sum(
+            not character.isspace()
+            for character in quote.text[quote.highlight_start : source_position]
+        )
+        rhythm = (0.86, 0.24, 0.62, 1.0, 0.38, 0.74, 0.14, 0.54, 0.92, 0.30, 0.68)
+        return max(1, round(emphasis.baseline_shift * rhythm[visible_index % len(rhythm)]))
+
+    def append_segment(
+        segment_text: str,
+        source_start: int,
+        source_end: int,
+        *,
+        highlighted: bool,
+        baseline_shift: int,
+    ) -> None:
+        nonlocal x
+        font = fonts.bold if highlighted else fonts.regular
+        width = text_width(font, segment_text)
+        segments.append(
+            StyledSegment(
+                segment_text,
+                x,
+                width,
+                highlighted,
+                source_start,
+                source_end,
+                emphasis.font_size if highlighted else fonts.regular.size,
+                baseline_shift,
+                emphasis.stroke_width if highlighted else 0,
+            )
+        )
+        x += width
+
     points = sorted(
         {
             line.start,
@@ -254,23 +314,84 @@ def _segments_for_line(
         if start == end:
             continue
         highlighted = start >= quote.highlight_start and end <= quote.highlight_end
-        font = fonts.bold if highlighted else fonts.regular
         segment_text = quote.text[start:end]
-        width = text_width(font, segment_text)
-        segments.append(
-            StyledSegment(
-                segment_text,
-                x,
-                width,
-                highlighted,
-                start,
-                end,
-                emphasis.font_size if highlighted else fonts.regular.size,
-                emphasis.baseline_shift if highlighted else 0,
+        if highlighted and emphasis.mode == TimeEmphasis.PICTURESQUE:
+            segment_x = x + emphasis.stroke_width
+            previous_advance = 0.0
+            for offset, character in enumerate(segment_text):
+                source_position = start + offset
+                current_advance = text_width(fonts.bold, segment_text[: offset + 1])
+                x = segment_x + previous_advance
+                append_segment(
+                    character,
+                    source_position,
+                    source_position + 1,
+                    highlighted=True,
+                    baseline_shift=(
+                        0 if character.isspace() else picturesque_shift(source_position)
+                    ),
+                )
+                x = segment_x + current_advance
+                previous_advance = current_advance
+            x += emphasis.stroke_width
+        else:
+            pieces = (
+                tuple(re.finditer(r"\s+|\S+", segment_text)) if justify_to_width is not None else ()
             )
-        )
-        x += width
-    return tuple(segments)
+            if pieces:
+                for piece in pieces:
+                    append_segment(
+                        piece.group(),
+                        start + piece.start(),
+                        start + piece.end(),
+                        highlighted=highlighted,
+                        baseline_shift=emphasis.baseline_shift if highlighted else 0,
+                    )
+            else:
+                append_segment(
+                    segment_text,
+                    start,
+                    end,
+                    highlighted=highlighted,
+                    baseline_shift=emphasis.baseline_shift if highlighted else 0,
+                )
+
+    if justify_to_width is None or maximum_word_space is None or justify_to_width <= line.width:
+        return tuple(segments)
+    gap_indexes = [
+        index
+        for index, segment in enumerate(segments)
+        if segment.text.isspace() and 0 < index < len(segments) - 1
+    ]
+    if not gap_indexes:
+        return tuple(segments)
+    requested_extra = justify_to_width - line.width
+    expansions = {index: 0.0 for index in gap_indexes}
+    active = set(gap_indexes)
+    remaining = requested_extra
+    while active and remaining > 0.01:
+        equal_share = remaining / len(active)
+        saturated: list[int] = []
+        for index in active:
+            capacity = max(0.0, maximum_word_space - segments[index].width)
+            if capacity <= equal_share:
+                expansions[index] = capacity
+                remaining -= capacity
+                saturated.append(index)
+        if saturated:
+            active.difference_update(saturated)
+            continue
+        for index in active:
+            expansions[index] = equal_share
+        remaining = 0.0
+    shifted: list[StyledSegment] = []
+    accumulated = 0.0
+    for index, segment in enumerate(segments):
+        expansion = expansions.get(index, 0.0)
+        expanded_width = segment.width + expansion
+        shifted.append(replace(segment, x=segment.x + accumulated, width=expanded_width))
+        accumulated += expansion
+    return tuple(shifted)
 
 
 def _wrap_single_font(text: str, font: ImageFont.FreeTypeFont, max_width: float) -> list[str]:
@@ -471,7 +592,12 @@ class LayoutEngine:
         attribution_width = max_width - attribution_shift
         length_factor = max(0.78, min(1.38, (180 / max(40, len(quote.text))) ** 0.18))
         starting_size = max(7, round(profile.base_font_size * length_factor))
-        minimum_emphasis = time_emphasis_metrics(time_emphasis, profile.minimum_body_size)
+        single_face_accent = self.time_font is not None and not self.time_font.has_bold
+        minimum_emphasis = time_emphasis_metrics(
+            time_emphasis,
+            profile.minimum_body_size,
+            single_face_accent=single_face_accent,
+        )
         minimum_probe = load_fonts(
             self.font,
             profile.minimum_body_size,
@@ -490,6 +616,7 @@ class LayoutEngine:
                 quote.highlight_end,
                 minimum_probe.regular,
                 minimum_probe.bold,
+                highlight_stroke_width=minimum_emphasis.stroke_width,
             )
             <= max_width
         )
@@ -513,7 +640,11 @@ class LayoutEngine:
                 profile.minimum_attribution_size,
                 round(body_size * profile.attribution_scale),
             )
-            emphasis = time_emphasis_metrics(time_emphasis, body_size)
+            emphasis = time_emphasis_metrics(
+                time_emphasis,
+                body_size,
+                single_face_accent=single_face_accent,
+            )
             fonts = load_fonts(
                 self.font,
                 body_size,
@@ -525,7 +656,7 @@ class LayoutEngine:
                     min(attribution_size - 1, round(attribution_size * profile.date_scale)),
                 ),
             )
-            raw_lines = _wrap_body(quote, fonts, max_width)
+            raw_lines = _wrap_body(quote, fonts, max_width, emphasis)
             if not raw_lines:
                 raise LayoutError("the quote contains no renderable text")
             spacing = profile.compact_line_spacing if compact else profile.normal_line_spacing
@@ -554,6 +685,7 @@ class LayoutEngine:
                         quote.highlight_end,
                         fonts.regular,
                         fonts.bold,
+                        highlight_stroke_width=emphasis.stroke_width,
                     )
                     > max_width
                 ):
@@ -618,10 +750,14 @@ class LayoutEngine:
             baseline_offset,
             emphasis,
         ) = chosen
-        attribution_left = quote_left + attribution_shift
         attr_specs, rendered_title, rendered_author = _fit_attribution(
             quote, fonts, attribution_width, attribution_style
         )
+        if profile.orientation == "landscape" and attr_specs:
+            attribution_block_width = max(width for _, _, width in attr_specs)
+            attribution_left = quote_left + max_width - attribution_shift - attribution_block_width
+        else:
+            attribution_left = quote_left
         attr_line_height = line_height(fonts.attribution_regular, spacing=1.12)
         gap = max(
             round(body_line_height * profile.attribution_gap_scale),
@@ -658,17 +794,34 @@ class LayoutEngine:
         body_lines: list[BodyLine] = []
         y = float(top)
         previous_paragraph: int | None = None
-        for raw_line in raw_lines:
+        for line_index, raw_line in enumerate(raw_lines):
             if previous_paragraph is not None and raw_line.paragraph_index != previous_paragraph:
                 y += paragraph_gap
-            segments = _segments_for_line(quote, raw_line, quote_left, fonts, emphasis)
+            is_paragraph_end = (
+                line_index == len(raw_lines) - 1
+                or raw_lines[line_index + 1].paragraph_index != raw_line.paragraph_index
+            )
+            justify_to_width = max_width if profile.justify_body and not is_paragraph_end else None
+            segments = _segments_for_line(
+                quote,
+                raw_line,
+                quote_left,
+                fonts,
+                emphasis,
+                justify_to_width,
+                body_size * profile.maximum_word_space_scale,
+            )
+            rendered_width = (
+                max(segment.x + segment.width + segment.stroke_width for segment in segments)
+                - quote_left
+            )
             body_lines.append(
                 BodyLine(
                     raw_line.start,
                     raw_line.end,
                     quote_left,
                     y,
-                    raw_line.width,
+                    rendered_width,
                     body_line_height,
                     y + baseline_offset,
                     segments,
@@ -724,6 +877,7 @@ class LayoutEngine:
             quote.highlight_end,
             fonts.regular,
             fonts.bold,
+            highlight_stroke_width=emphasis.stroke_width,
         )
         clipping = (
             body_bbox.left < profile.margin_x
@@ -779,6 +933,7 @@ class LayoutEngine:
             highlight_font_size=emphasis.font_size,
             highlight_scale=emphasis.scale,
             highlight_baseline_shift=emphasis.baseline_shift,
+            highlight_stroke_width=emphasis.stroke_width,
             time_emphasis=time_emphasis.value,
             attribution_font_size=attribution_size,
             body_line_count=len(body_lines),

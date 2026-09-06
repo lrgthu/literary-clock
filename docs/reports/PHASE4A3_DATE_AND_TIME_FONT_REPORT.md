@@ -67,7 +67,9 @@ font directions. Every variant had zero clipping, zero date collision, a one-lin
 valid attribution. On the comparison quote, body/highlight sizes were 60/60 px in `classic`,
 60/66 px in `subtle-lift`, and 60/70 px in `expressive`; the date was 22 px.
 
-The final recommendation is **Arial Bold with `subtle-lift`**. The font contrast already provides
+This pre-physical recommendation was **Arial Bold with `subtle-lift`**. Phase 4A.4 physical
+comparison superseded it with Apple Chancery and `picturesque`; see
+`PHASE4A4_PHYSICAL_COMPARISON_REPORT.md`. At this stage, the font contrast appeared to provide
 energy, so `expressive` adds more size than is necessary for V1. Arial is used only from the local
 system and is not committed or redistributed.
 

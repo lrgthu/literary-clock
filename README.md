@@ -406,14 +406,19 @@ complete family. Automatic discovery still requires and returns a complete famil
 The highlighted phrase may use an independent accent family. Pass a real pair with
 `--time-font-regular` and `--time-font-bold`; both paths are required and the bold face is checked
 using its embedded style metadata. `--time-font PATH` is an honest single-face option: that exact
-face is used, and the CLI warns when it is not actually bold. With no time-font option, wrapping
-and drawing use the body family's bold face exactly as before. No configured font failure silently
+face is used, and the CLI warns when it is not actually bold. The `picturesque` treatment may add
+a measured ink stroke to a single-face accent; diagnostics report both the absent bold face and
+the stroke width rather than pretending a bold file exists. With no time-font option, wrapping and
+drawing use the body family's bold face exactly as before. No configured font failure silently
 substitutes a different family.
 
 ```bash
 uv run litclock render 15:46 --device pw4 --orientation landscape --preview \
   --date 2026-09-05 --time-emphasis subtle-lift \
   --time-font-regular /path/Accent-Regular.ttf --time-font-bold /path/Accent-Bold.ttf
+uv run litclock render-id 6730 --time 10:04 --device pw4 --orientation landscape \
+  --mode 1bit --dither threshold --date 2026-09-05 --time-emphasis picturesque \
+  --time-font '/path/to/Apple Chancery.ttf'
 uv run litclock render-now --device pw4 --orientation landscape --mode 1bit --show-date
 uv run litclock render-id 42 --device pw4 --orientation landscape
 uv run litclock render 16:37 --device custom --width 800 --height 1200 --preview
@@ -438,6 +443,14 @@ PW4 landscape shows the date by default as locale-independent English text such 
 `Sat, Sep 5`. `--date YYYY-MM-DD` makes preview output reproducible; `--show-date` and
 `--hide-date` explicitly control it. Other profiles keep the label off unless requested. The date
 source is independent from quote selection and contains no clock time or Kindle system UI.
+
+Physical PW4 comparison selected Georgia for body and attribution, a locally installed Apple
+Chancery face for the time phrase, and `picturesque` emphasis. The highlighted characters use a
+deterministic uneven baseline while preserving their order and original wording. PW4 landscape
+uses bounded book-style justification: non-final lines expand only until a word gap reaches 0.5 em
+and remain partially ragged rather than forming wide rivers. The font file is neither copied nor
+redistributed; systems without it must provide another local accent or use the portable body-family
+fallback.
 
 Before layout, the presentation gate rejects raw serialized corpus rows, concatenated records,
 and corrupt excerpt/source mappings. A rejected selection is not written to display history; the

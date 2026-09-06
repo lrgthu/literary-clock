@@ -6,8 +6,8 @@ Primary target: Kindle Paperwhite 4, native landscape 1448 × 1072 at 300 ppi. N
 
 - Unique selectable quotes audited: 7,091
 - Display-safe quote-minute relationships: 8,727 / 8,730
-- DISPLAY_SAFE_FULL: 7,080
-- DISPLAY_SAFE_EXCERPT: 8
+- DISPLAY_SAFE_FULL: 7,074
+- DISPLAY_SAFE_EXCERPT: 14
 - REJECT_DIRTY: 3
 - REJECT_TOO_LONG: 0
 - REJECT_ATTRIBUTION: 0
@@ -15,8 +15,8 @@ Primary target: Kindle Paperwhite 4, native landscape 1448 × 1072 at 300 ppi. N
 - Minutes with 0 / 1 / 2 / >=3 safe candidates: 0 / 26 / 71 / 1343
 - Body font size min / median / max: 38 / 62.0 / 81 px
 - Maximum body lines: 10 (hard limit: 10)
-- Full / excerpt: 7,080 / 8
-- Highlight wrapped / pathological: 3 / 0
+- Full / excerpt: 7,074 / 14
+- Highlight wrapped / pathological: 2 / 0
 
 ## Deterministic visual cases
 

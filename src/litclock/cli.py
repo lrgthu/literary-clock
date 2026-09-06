@@ -129,7 +129,7 @@ def _time_font_selection(args: argparse.Namespace):
     if not selection.has_bold:
         print(
             "warning: the explicit time font has no verified bold face; the supplied face "
-            "will be used honestly without synthetic bold",
+            "will be used honestly (picturesque mode adds its documented measured ink stroke)",
             file=sys.stderr,
         )
     return selection

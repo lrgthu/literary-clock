@@ -131,7 +131,7 @@ def test_mixed_family_width_uses_actual_accent_face(body_font, sans_time_font) -
         time_selection=sans_time_font,
     )
     for line in layout.body_lines:
-        measured = mixed_style_width(
+        natural_width = mixed_style_width(
             quote.text,
             line.source_start,
             line.source_end,
@@ -140,7 +140,9 @@ def test_mixed_family_width_uses_actual_accent_face(body_font, sans_time_font) -
             fonts.regular,
             fonts.bold,
         )
-        assert line.width == pytest.approx(measured)
+        rendered_width = sum(segment.width for segment in line.segments)
+        assert line.width == pytest.approx(rendered_width)
+        assert line.width >= natural_width
     assert layout.diagnostics.time_font_family == sans_time_font.family
     assert layout.diagnostics.time_font_bold_face_available
     assert not layout.diagnostics.time_font_fallback_to_body

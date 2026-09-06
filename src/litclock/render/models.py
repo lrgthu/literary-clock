@@ -32,6 +32,7 @@ class TimeEmphasis(StrEnum):
     CLASSIC = "classic"
     SUBTLE_LIFT = "subtle-lift"
     EXPRESSIVE = "expressive"
+    PICTURESQUE = "picturesque"
 
 
 class DirtyRecordStatus(StrEnum):
@@ -158,6 +159,7 @@ class StyledSegment:
     source_end: int
     font_size: int
     baseline_shift: int
+    stroke_width: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +212,7 @@ class LayoutDiagnostics:
     highlight_font_size: int
     highlight_scale: float
     highlight_baseline_shift: int
+    highlight_stroke_width: int
     time_emphasis: str
     attribution_font_size: int
     body_line_count: int

@@ -16,23 +16,27 @@ is drawn.
 PW4 landscape shows a renderer-owned short date by default: `Sat, Sep 5`. Formatting uses fixed
 English three-letter weekday/month names and an unpadded day, with no year or clock time. It sits
 at 5% of frame width/height (72, 54 px on PW4), independent from the optically centered quote.
-Typical QA size is 22–24 px, smaller and quieter than attribution. Diagnostics record its exact
-text, font size, bounding box, clipping, and collision state. Other device profiles default off;
+The physically selected PW4 scale produces a typical 29–32 px label, still no larger than the
+attribution. Diagnostics record its exact text, font size, bounding box, clipping, and collision
+state. Other device profiles default off;
 the CLI offers `--show-date`, `--hide-date`, and deterministic `--date YYYY-MM-DD`.
 
 ## Layout policy
 
-PW4 landscape uses 123 px horizontal and 96 px vertical safe margins. The normal text measure is
-1,173 px and the compact fallback is at most 1,202 px. The nominal body size is 62 px with a hard
+PW4 landscape uses 152 px horizontal and 96 px vertical safe margins. The normal text measure is
+1,100 px and the compact fallback is at most 1,187 px. The nominal body size is 62 px with a hard
 38 px minimum. Three to seven lines are preferred, eight is the soft maximum, and ten is the hard
 maximum. Text never shrinks below the readable minimum merely to avoid clipping.
 
 Wrapping uses the actual body and time-font metrics. A highlighted phrase stays together when it
 fits cleanly; otherwise it can wrap without losing or altering any source character. The time
 face's width, ascent, descent, scaled size, and raised baseline participate in line geometry before
-drawing. Quote and attribution are composed as one optically centered unit, with the landscape
-attribution shifted slightly right while remaining attached to the quote; the detached date does
-not push that composition downward.
+drawing. PW4 non-final body lines use bounded book-style justification: spacing expands toward the
+right edge only until each word gap reaches a strict 0.5 em maximum, after which the line remains
+partially ragged. Final paragraph lines remain natural. Quote and attribution are composed as one
+optically centered unit, with the landscape attribution kept as one left-aligned block anchored to
+the right edge of the quote measure; the detached date does not push that composition downward.
+Normal line spacing is 1.05 rather than the earlier 1.16.
 
 Every body-size candidate is evaluated with the matching attribution font and its complete
 vertical budget. If body plus gap plus attribution is too tall, the engine tries the next smaller
@@ -84,13 +88,19 @@ An optional accent family for the literary time phrase is configured with
 `--time-font-regular PATH --time-font-bold PATH`. Both are required; the supplied bold face is
 validated. `--time-font PATH` uses only that exact file and reports whether it is truly bold. A
 missing or unloadable explicit face fails clearly. With no accent option, the body family's bold
-face remains the time face, preserving prior rendering. The existing `classic`, `subtle-lift`, and
-`expressive` treatments apply to whichever time family is selected.
+face remains the time face, preserving prior rendering. The `classic`, `subtle-lift`, and
+`expressive` treatments apply to whichever time family is selected. `picturesque` adds a
+deterministic character-level vertical rhythm without changing text or character order. When its
+accent is a single honest face with no bold file, it may add a measured ink stroke; that stroke
+participates in width, line height, wrapping, clipping, and diagnostics.
 
-Local 1-bit QA compared Georgia/Georgia, Georgia/Arial, and Georgia/Times New Roman. Arial Bold with
-`subtle-lift` is the V1 physical-test recommendation: it creates a clear but restrained serif/sans
-contrast without digital or novelty styling. Times New Roman is a useful conservative alternative
-but is less distinct from Georgia. These are local system fonts only; none are redistributed.
+Physical 1-bit QA compared Georgia body text with Arial Bold, Georgia Bold, Times New Roman Bold,
+and Apple Chancery. The first three were rejected as insufficiently art-like on the panel. The
+frozen V1 pairing is **Georgia body and attribution + Apple Chancery time phrase + `picturesque`**.
+At the controlled 65 px body size the time face is 72 px, uses deterministic 1–10 px character
+lifts, and receives a measured 2 px ink stroke. The date is 32 px at the physically approved
+`(72, 54)` position. Apple Chancery is a local system font and is not redistributed or hardcoded
+as a portable path.
 
 Built-in Paperwhite profiles distinguish `paperwhite-1-2` (758 × 1024 at 212 ppi),
 `paperwhite-3` (1072 × 1448 at 300 ppi), PW4 portrait/landscape, and `paperwhite-5`. The historical
@@ -110,10 +120,10 @@ quote and writes display history only for the rendered result.
 
 ## Verified status
 
-The current PW4 landscape audit classified 7,079 selectable quotes as safe in full, 9 as safe via
+The frozen PW4 landscape audit classified 7,074 selectable quotes as safe in full, 14 as safe via
 excerpt, and 3 as dirty. It found zero empty display-safe minute pools, zero clipping, zero bodies
 over ten lines, zero attributions over three lines, and no unsupported glyph in the curated QA
 set. The final result is **READY FOR PHYSICAL KINDLE TEST**. Exact measurements and artifacts are
 in [`reports/PHASE3_RENDER_FINALIZATION_REPORT.md`](reports/PHASE3_RENDER_FINALIZATION_REPORT.md).
-Date/accent comparison results are in
-[`reports/PHASE4A3_DATE_AND_TIME_FONT_REPORT.md`](reports/PHASE4A3_DATE_AND_TIME_FONT_REPORT.md).
+Physical typography results are in
+[`reports/PHASE4A4_PHYSICAL_COMPARISON_REPORT.md`](reports/PHASE4A4_PHYSICAL_COMPARISON_REPORT.md).
