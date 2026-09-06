@@ -178,6 +178,12 @@ Major tuning errors found and removed were geographic/figurative French `Midi`, 
 uses of `vingt-quatre heures`, approximate French modifiers, non-temporal Chinese “points,” severe
 mixed-script corruption, approximate `多钟`, and before/after thresholds.
 
+A post-gate scout over 16 additional official Project Gutenberg Chinese fiction files found only
+three tentative `HIGH` expressions before provenance admission. That low-yield set was not added
+to the pinned corpus because it did not materially close the 100-item review gap. This negative
+result supports moving the next expansion to the already pinned Wikisource bulk source instead of
+weakening the grammar or accumulating unreviewed one-off inputs.
+
 ## 11. French coverage
 
 Only the 148 novel resolved `HIGH` candidates were imported.
