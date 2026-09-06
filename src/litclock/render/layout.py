@@ -409,6 +409,10 @@ class LayoutEngine:
         max_width = min(usable_width, round(profile.width * width_ratio))
         quote_left = (profile.width - max_width) / 2
         available_height = profile.height - 2 * profile.margin_y
+        attribution_shift = (
+            round(profile.width * 0.035) if profile.orientation == "landscape" else 0
+        )
+        attribution_width = max_width - attribution_shift
         length_factor = max(0.78, min(1.38, (180 / max(40, len(quote.text))) ** 0.18))
         starting_size = max(7, round(profile.base_font_size * length_factor))
         minimum_probe = load_fonts(
@@ -441,6 +445,7 @@ class LayoutEngine:
             | None
         ) = None
         hard_candidate = None
+        composition_too_tall = False
         for body_size in range(starting_size, profile.minimum_body_size - 1, -1):
             attribution_size = max(
                 profile.minimum_attribution_size,
@@ -476,6 +481,17 @@ class LayoutEngine:
                     > max_width
                 ):
                     continue
+                attr_specs, _, _ = _fit_attribution(
+                    quote, fonts, attribution_width, attribution_style
+                )
+                attr_line_height = line_height(fonts.attribution_regular, spacing=1.12)
+                attribution_height = len(attr_specs) * attr_line_height
+                if len(attr_specs) > 1:
+                    attribution_height += round(attr_line_height * 0.12)
+                gap = max(round(body_line_height * 0.72), round(profile.height * 0.025))
+                if body_height + gap + attribution_height > available_height:
+                    composition_too_tall = True
+                    continue
                 candidate = (
                     body_size,
                     attribution_size,
@@ -490,6 +506,12 @@ class LayoutEngine:
         if chosen is None:
             chosen = hard_candidate
         if chosen is None:
+            if composition_too_tall:
+                raise LayoutError(
+                    f"quote {quote.quote_id} and its attribution exceed the vertical safe "
+                    f"region at the {profile.minimum_body_size}px minimum",
+                    code="layout",
+                )
             raise LayoutError(
                 f"quote {quote.quote_id} exceeds {profile.hard_body_lines} lines at the "
                 f"{profile.minimum_body_size}px minimum",
@@ -503,11 +525,7 @@ class LayoutEngine:
             raw_lines,
             body_line_height,
         ) = chosen
-        attribution_shift = (
-            round(profile.width * 0.035) if profile.orientation == "landscape" else 0
-        )
         attribution_left = quote_left + attribution_shift
-        attribution_width = max_width - attribution_shift
         attr_specs, rendered_title, rendered_author = _fit_attribution(
             quote, fonts, attribution_width, attribution_style
         )
@@ -608,8 +626,11 @@ class LayoutEngine:
         diagnostics = LayoutDiagnostics(
             font_family=self.font.family,
             font_regular_path=str(self.font.regular),
-            font_bold_path=str(self.font.bold),
-            font_italic_path=str(self.font.italic),
+            font_bold_path=str(self.font.bold or self.font.regular),
+            font_italic_path=str(self.font.italic or self.font.regular),
+            bold_face_available=self.font.has_bold,
+            italic_face_available=self.font.has_italic,
+            bold_italic_face_available=self.font.has_bold_italic,
             body_font_size=body_size,
             attribution_font_size=attribution_size,
             body_line_count=len(body_lines),

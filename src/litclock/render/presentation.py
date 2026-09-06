@@ -27,7 +27,7 @@ _LIFE_DATES = re.compile(
 _SINGLE_METADATA_DATE = re.compile(r",\s*\d{3,4}\??\s*$")
 _SUBTITLE_PHRASE = re.compile(
     r"(?:\s*[,;:—-]\s*|\s+)"
-    r"(?:being(?:\s+an?\s+account\s+of|\s+the\s+narrative\s+of)?|"
+    r"(?:being\s+(?:the\s+narrative\s+of|an?\s+(?:account|narrative)\s+of)|"
     r"an\s+account\s+of|a\s+narrative\s+of)",
     re.IGNORECASE,
 )

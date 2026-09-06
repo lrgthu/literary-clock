@@ -17,6 +17,7 @@ from litclock.render.presentation import (
     classify_dirty_record,
     excerpt_candidates,
     normalize_attribution,
+    simplify_title,
     validate_excerpt_integrity,
 )
 from litclock.render.profiles import BUILTIN_PROFILES, get_device_profile
@@ -150,6 +151,18 @@ def test_catalog_subtitles_are_intelligently_removed(canonical: str, display: st
     assert normalize_attribution(canonical, "Author").title == display
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "The Importance of Being Earnest",
+        "On Being Human",
+        "The Art of Being ...",
+    ],
+)
+def test_being_inside_legitimate_title_is_not_trimmed(title: str) -> None:
+    assert simplify_title(title) == title
+
+
 def test_inverted_name_life_dates_and_roles_are_removed() -> None:
     display = normalize_attribution("Book", "Franck, Harry Alverson, 1881-1962 [Contributor]")
     assert display.creator == "Harry Alverson Franck"
@@ -195,6 +208,44 @@ def test_attribution_never_exceeds_three_lines(renderer: PillowRenderer) -> None
     )
     layout = LayoutEngine(renderer.font).layout(quote, BUILTIN_PROFILES["pw4_landscape"])
     assert layout.diagnostics.attribution_line_count <= 3
+
+
+def test_full_layout_shrinks_for_attribution_before_excerpt(renderer: PillowRenderer) -> None:
+    quote = render_quote(
+        "At four o’clock, the travelers crossed the silent square while the last lamps "
+        "faded behind them and the road disappeared into the winter mist.",
+        "four o’clock",
+        title=(
+            "The Complete Chronicle of the Long and Unexpected Journey Across the Mountains "
+            "and Through the Valleys of a Distant Country"
+        ),
+        author="Alexandra Catherine Montgomery",
+    )
+    base_profile = replace(
+        BUILTIN_PROFILES["pw4_landscape"],
+        name="attribution-aware",
+        maximum_quote_region=0.90,
+    )
+    length_factor = max(0.78, min(1.38, (180 / max(40, len(quote.text))) ** 0.18))
+    starting_size = round(base_profile.base_font_size * length_factor)
+    result = None
+    for margin_percent in range(20, 37):
+        profile = replace(base_profile, safe_margin_y=margin_percent / 100)
+        candidate = is_renderable_for_device(quote, profile, renderer.font)
+        if (
+            candidate.status == RenderabilityStatus.DISPLAY_SAFE_FULL
+            and candidate.diagnostics is not None
+            and candidate.diagnostics.body_font_size < starting_size
+        ):
+            result = candidate
+            break
+    assert result is not None
+    assert result.status == RenderabilityStatus.DISPLAY_SAFE_FULL
+    assert result.quote is not None and not result.quote.is_excerpt
+    assert result.diagnostics is not None
+    assert result.diagnostics.body_font_size < starting_size
+    assert result.diagnostics.attribution_line_count == 3
+    assert not result.diagnostics.clipping
 
 
 def test_full_quote_respects_minimum_font_and_ten_line_limit(renderer: PillowRenderer) -> None:

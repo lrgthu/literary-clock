@@ -74,7 +74,8 @@ class DeviceProfile:
 
 BUILTIN_PROFILES: dict[str, DeviceProfile] = {
     "kindle-1-4": DeviceProfile("kindle-1-4", 600, 800, pixel_density_ppi=167),
-    "paperwhite-1-3": DeviceProfile("paperwhite-1-3", 758, 1024, pixel_density_ppi=212),
+    "paperwhite-1-2": DeviceProfile("paperwhite-1-2", 758, 1024, pixel_density_ppi=212),
+    "paperwhite-3": DeviceProfile("paperwhite-3", 1072, 1448, pixel_density_ppi=300),
     "kindle-basic-11": DeviceProfile("kindle-basic-11", 1072, 1448, pixel_density_ppi=300),
     "paperwhite-5": DeviceProfile("paperwhite-5", 1236, 1648, pixel_density_ppi=300),
     "oasis": DeviceProfile("oasis", 1264, 1680, pixel_density_ppi=300),
@@ -112,9 +113,9 @@ PROFILE_ALIASES = {
     "kindle-4": "kindle-1-4",
     "paperwhite": "paperwhite-5",
     "paperwhite-11": "paperwhite-5",
-    "paperwhite-1": "paperwhite-1-3",
-    "paperwhite-2": "paperwhite-1-3",
-    "paperwhite-3": "paperwhite-1-3",
+    "paperwhite-1": "paperwhite-1-2",
+    "paperwhite-2": "paperwhite-1-2",
+    "paperwhite-1-3": "paperwhite-1-2",
     "basic-11": "kindle-basic-11",
     "pw4-portrait": "pw4_portrait",
     "pw4-landscape": "pw4_landscape",

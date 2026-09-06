@@ -180,6 +180,9 @@ class LayoutDiagnostics:
     font_regular_path: str
     font_bold_path: str
     font_italic_path: str
+    bold_face_available: bool
+    italic_face_available: bool
+    bold_italic_face_available: bool
     body_font_size: int
     attribution_font_size: int
     body_line_count: int

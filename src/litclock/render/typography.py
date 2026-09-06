@@ -17,10 +17,26 @@ class FontNotFoundError(FileNotFoundError):
 class FontSelection:
     family: str
     regular: Path
-    bold: Path
-    italic: Path
-    bold_italic: Path
+    bold: Path | None
+    italic: Path | None
+    bold_italic: Path | None
     fallback_used: bool = False
+
+    @property
+    def has_bold(self) -> bool:
+        return self.bold is not None
+
+    @property
+    def has_italic(self) -> bool:
+        return self.italic is not None
+
+    @property
+    def has_bold_italic(self) -> bool:
+        return self.bold_italic is not None
+
+    @property
+    def is_complete_family(self) -> bool:
+        return self.has_bold and self.has_italic and self.has_bold_italic
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,18 +114,85 @@ def _find_filename(filename: str) -> Path | None:
     return None
 
 
-def discover_font(explicit_path: Path | str | None = None) -> FontSelection:
-    """Return a complete serif family without copying it into the project."""
+def _loadable_font_path(path: Path | str, *, role: str) -> tuple[Path, str, str]:
+    resolved = Path(path).expanduser().resolve()
+    if not resolved.is_file():
+        raise FontNotFoundError(f"configured {role} font does not exist: {resolved}")
+    try:
+        font = ImageFont.truetype(str(resolved), 20)
+        family, style = font.getname()
+    except OSError as error:
+        raise FontNotFoundError(f"configured {role} font cannot be loaded: {resolved}") from error
+    return resolved, family, style
+
+
+def _validate_face_style(role: str, style: str) -> None:
+    normalized = style.casefold()
+    bold = any(token in normalized for token in ("bold", "black", "heavy", "demi", "semi"))
+    italic = any(token in normalized for token in ("italic", "oblique"))
+    if role == "bold" and not bold:
+        raise FontNotFoundError(f"configured bold face identifies itself as {style!r}, not bold")
+    if role == "italic" and not italic:
+        raise FontNotFoundError(
+            f"configured italic face identifies itself as {style!r}, not italic"
+        )
+    if role == "bold italic" and not (bold and italic):
+        raise FontNotFoundError(
+            f"configured bold-italic face identifies itself as {style!r}, not bold italic"
+        )
+
+
+def discover_font(
+    explicit_path: Path | str | None = None,
+    *,
+    regular_path: Path | str | None = None,
+    bold_path: Path | str | None = None,
+    italic_path: Path | str | None = None,
+    bold_italic_path: Path | str | None = None,
+) -> FontSelection:
+    """Return an explicit or automatically discovered serif family.
+
+    ``explicit_path`` is the backward-compatible single-face mode. Missing styles are
+    represented honestly and loaded from the regular face only as a documented fallback.
+    Structured explicit configuration requires all four paths.
+    """
+    structured = {
+        "regular": regular_path,
+        "bold": bold_path,
+        "italic": italic_path,
+        "bold italic": bold_italic_path,
+    }
+    if explicit_path is not None and any(path is not None for path in structured.values()):
+        raise FontNotFoundError("--font cannot be combined with explicit family face paths")
+    if any(path is not None for path in structured.values()):
+        missing = [role for role, path in structured.items() if path is None]
+        if missing:
+            raise FontNotFoundError(
+                "explicit font family requires regular, bold, italic, and bold-italic faces; "
+                f"missing: {', '.join(missing)}"
+            )
+        loaded = {
+            role: _loadable_font_path(path, role=role)
+            for role, path in structured.items()
+            if path is not None
+        }
+        for role in ("bold", "italic", "bold italic"):
+            _validate_face_style(role, loaded[role][2])
+        families = {family for _, family, _ in loaded.values()}
+        family = loaded["regular"][1]
+        if len(families) > 1:
+            family = " / ".join(sorted(families))
+        return FontSelection(
+            family,
+            loaded["regular"][0],
+            loaded["bold"][0],
+            loaded["italic"][0],
+            loaded["bold italic"][0],
+        )
+
     if explicit_path is not None:
-        path = Path(explicit_path).expanduser().resolve()
-        if not path.is_file():
-            raise FontNotFoundError(f"configured font does not exist: {path}")
-        try:
-            font = ImageFont.truetype(str(path), 20)
-            family = font.getname()[0]
-        except OSError as error:
-            raise FontNotFoundError(f"configured font cannot be loaded: {path}") from error
-        return FontSelection(family, path, path, path, path, fallback_used=True)
+        path, family, _ = _loadable_font_path(explicit_path, role="single-face")
+        return FontSelection(family, path, None, None, None, fallback_used=True)
 
     env_path = os.environ.get("LITCLOCK_FONT")
     if env_path:
@@ -123,16 +206,18 @@ def discover_font(explicit_path: Path | str | None = None) -> FontSelection:
             assert regular and bold and italic and bold_italic
             return FontSelection(name, regular, bold, italic, bold_italic)
     raise FontNotFoundError(
-        "no supported serif family was found; pass --font PATH or set LITCLOCK_FONT"
+        "no supported serif family was found; configure all four explicit face paths or use "
+        "the documented single-face --font fallback"
     )
 
 
 def load_fonts(selection: FontSelection, body_size: int, attribution_size: int) -> LoadedFonts:
-    def load(path: Path, size: int) -> ImageFont.FreeTypeFont:
+    def load(path: Path | None, size: int) -> ImageFont.FreeTypeFont:
+        selected_path = path or selection.regular
         try:
-            return ImageFont.truetype(str(path), size)
+            return ImageFont.truetype(str(selected_path), size)
         except OSError as error:
-            raise FontNotFoundError(f"font could not be loaded: {path}") from error
+            raise FontNotFoundError(f"font could not be loaded: {selected_path}") from error
 
     return LoadedFonts(
         regular=load(selection.regular, body_size),

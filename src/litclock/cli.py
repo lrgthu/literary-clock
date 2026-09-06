@@ -79,6 +79,37 @@ def _database_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db", type=Path, default=DEFAULT_DATABASE, help="SQLite corpus path")
 
 
+def _font_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--font",
+        type=Path,
+        help="single regular face fallback (bold/italic unavailable; prefer four face options)",
+    )
+    parser.add_argument("--font-regular", type=Path, help="regular face for an explicit family")
+    parser.add_argument("--font-bold", type=Path, help="bold face for an explicit family")
+    parser.add_argument("--font-italic", type=Path, help="italic face for an explicit family")
+    parser.add_argument(
+        "--font-bold-italic", type=Path, help="bold italic face for an explicit family"
+    )
+
+
+def _font_selection(args: argparse.Namespace):
+    selection = discover_font(
+        args.font,
+        regular_path=args.font_regular,
+        bold_path=args.font_bold,
+        italic_path=args.font_italic,
+        bold_italic_path=args.font_bold_italic,
+    )
+    if not selection.is_complete_family:
+        print(
+            "warning: single-face font fallback is active; bold time emphasis and italic title "
+            "are unavailable",
+            file=sys.stderr,
+        )
+    return selection
+
+
 def _render_arguments(
     parser: argparse.ArgumentParser,
     *,
@@ -96,7 +127,7 @@ def _render_arguments(
     parser.add_argument("--width", type=int, help="custom pixel width (requires --height)")
     parser.add_argument("--height", type=int, help="custom pixel height (requires --width)")
     parser.add_argument("--output", type=Path, help="PNG path; defaults under render_previews")
-    parser.add_argument("--font", type=Path, help="local serif font file")
+    _font_arguments(parser)
     parser.add_argument("--mode", choices=tuple(RenderMode), default=RenderMode.GRAYSCALE.value)
     parser.add_argument("--dither", choices=tuple(DitherMode), default=DitherMode.THRESHOLD.value)
     parser.add_argument(
@@ -164,7 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
         "render-qa", help="generate deterministic visual QA frames and reports"
     )
     _database_argument(render_qa_parser)
-    render_qa_parser.add_argument("--font", type=Path, help="local serif font file")
+    _font_arguments(render_qa_parser)
 
     mine_parser = commands.add_parser(
         "mine-standard-ebooks", help="acquire and mine a bounded Standard Ebooks sample"
@@ -368,7 +399,7 @@ def _render_quote(
         height=args.height,
         orientation=args.orientation,
     )
-    font = discover_font(args.font)
+    font = _font_selection(args)
     connection = connect_database(args.db)
     try:
         if quote_id is not None:
@@ -480,7 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload = run_render_qa(
                     connection,
                     PROJECT_ROOT,
-                    font=discover_font(args.font),
+                    font=_font_selection(args),
                 )
             finally:
                 connection.close()

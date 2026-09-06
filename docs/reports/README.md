@@ -8,13 +8,14 @@ Reports contain aggregate results and limited audit context. They are corpus-der
 relicensed as MIT; see [`../../NOTICE.md`](../../NOTICE.md). Machine-readable JSON/CSV and full
 review exports remain under ignored `data/generated/` in the local working tree.
 
-The current endpoint is `PHASE3_RENDER_FINALIZATION_REPORT.md`. Earlier reports document how the
-corpus progressed through normalization, public-domain mining, clock-face eligibility, and the
-sparse-tail recovery pass.
+The current endpoint is `PHASE3_1_CLEANUP_REPORT.md`, following the renderer finalization report.
+Earlier reports document how the corpus progressed through normalization, public-domain mining,
+clock-face eligibility, and the sparse-tail recovery pass.
 
 `PHASE3_RENDER_REPORT.md` is the historical pre-finalization renderer report; it records the
 long-quote/data-handoff failure that the finalization pass later traced and fixed. Use
-`PHASE3_RENDER_FINALIZATION_REPORT.md` and `RENDER_QA.md` for current renderer status.
+`PHASE3_RENDER_FINALIZATION_REPORT.md`, `PHASE3_1_CLEANUP_REPORT.md`, and `RENDER_QA.md` for current
+renderer status.
 
 Preview bitmaps and contact sheets are deliberately not published because they contain third-party
 quotation text and are fully regenerable from a licensed local corpus with `litclock render-qa`.

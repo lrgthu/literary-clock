@@ -24,6 +24,11 @@ cleanly; otherwise it can wrap without losing or altering any source character. 
 attribution are composed as one optically centered unit, with the landscape attribution shifted
 slightly right while remaining attached to the quote.
 
+Every body-size candidate is evaluated with the matching attribution font and its complete
+vertical budget. If body plus gap plus attribution is too tall, the engine tries the next smaller
+readable full-quote size before compact geometry or excerpting. The ten-line, minimum-size,
+three-line attribution, and clipping limits remain hard constraints.
+
 ## Full text and excerpt fallback
 
 The fallback order is:
@@ -47,6 +52,28 @@ and at most two, using measured-width ellipsis only after semantic simplificatio
 shown normally, two may be joined, and three or more become `<First Author> et al.` unless a clear
 editor exists. Collections then use `Edited by <Editor>`. The entire attribution is capped at three
 lines and never forces a dramatic reduction in quote size.
+
+Title simplification recognizes only high-confidence catalog constructions such as `Being the
+Narrative of`, `Being an Account of`, `An Account of`, repeated descriptive colons, and similar
+structured tails. Bare `Being` is not a delimiter: titles such as *The Importance of Being Earnest*
+and *On Being Human* remain intact.
+
+## Fonts
+
+Automatic discovery selects a complete four-face family from EB Garamond, Linux Libertine,
+Georgia, DejaVu Serif, or Liberation Serif. An explicit production family uses
+`--font-regular`, `--font-bold`, `--font-italic`, and `--font-bold-italic` together. Missing faces
+fail clearly, and supplied style files are validated using their embedded style metadata.
+
+The older `--font PATH` option remains as an explicit single-face compatibility fallback. It emits
+a warning, records unavailable bold/italic faces in diagnostics, and uses the regular face only;
+therefore it is unsuitable when the final visual hierarchy matters. `LITCLOCK_FONT` has the same
+single-face behavior. No font binaries are distributed by this repository.
+
+Built-in Paperwhite profiles distinguish `paperwhite-1-2` (758 × 1024 at 212 ppi),
+`paperwhite-3` (1072 × 1448 at 300 ppi), PW4 portrait/landscape, and `paperwhite-5`. The historical
+CLI alias `paperwhite-1-3` resolves to `paperwhite-1-2` for compatibility; it no longer implies that
+Paperwhite 3 has the earlier resolution.
 
 ## Dirty-record and renderability gates
 

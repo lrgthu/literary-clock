@@ -1,5 +1,7 @@
 # Literary Clock
 
+[![CI](https://github.com/lrgthu/literary-clock/actions/workflows/ci.yml/badge.svg)](https://github.com/lrgthu/literary-clock/actions/workflows/ci.yml)
+
 `literary-clock` is a Kindle-oriented literary clock that tells time through quotations from
 literature. Each frame displays one literary quotation containing the current time expression,
 with that phrase emphasized inside the author's original wording and quiet book/author attribution
@@ -382,8 +384,22 @@ relaxing these preferences when a minute has no alternative.
 
 Pillow is the bitmap backend. It discovers a supported local serif family (EB Garamond, Linux
 Libertine, Georgia, DejaVu Serif, or Liberation Serif, in preference order) and records the exact
-path in each JSON metadata sidecar. Font files are never copied into this repository. Pass
-`--font PATH` or set `LITCLOCK_FONT` to choose another local font explicitly.
+paths and face availability in each JSON metadata sidecar. Font files are never copied into this
+repository. For a production-quality explicit family, pass all four faces:
+
+```bash
+uv run litclock render 15:46 --device pw4 --orientation landscape --preview \
+  --font-regular /path/Family-Regular.ttf \
+  --font-bold /path/Family-Bold.ttf \
+  --font-italic /path/Family-Italic.ttf \
+  --font-bold-italic /path/Family-BoldItalic.ttf
+```
+
+The four structured options are all-or-nothing, and supplied bold/italic files are checked against
+their embedded style names. The backward-compatible `--font PATH` and `LITCLOCK_FONT` forms are
+explicit single-face fallbacks: the CLI warns that bold time emphasis and italic attribution are
+unavailable, and metadata reports those missing faces instead of pretending the regular file is a
+complete family. Automatic discovery still requires and returns a complete family.
 
 ```bash
 uv run litclock render 15:46 --device pw4 --orientation landscape --preview
@@ -394,9 +410,11 @@ uv run litclock render 16:37 --device custom --width 800 --height 1200 --preview
 
 The V1 primary profile is Kindle Paperwhite 4 landscape: **1448 × 1072 at 300 ppi**. Its layout is
 computed natively rather than rotating a 1072 × 1448 portrait frame. `pw4_portrait` remains a
-built-in profile. The landscape body uses a 38 px hard minimum, prefers 3–7 lines, soft-limits at
-8, and never allows more than 10. Long passages become exact, sentence-aligned excerpts around
-the highlighted time phrase instead of shrinking indefinitely.
+built-in profile. Earlier generations are represented accurately as `paperwhite-1-2` (758 × 1024,
+212 ppi) and `paperwhite-3` (1072 × 1448, 300 ppi); the legacy `paperwhite-1-3` CLI name remains an
+alias for the early 758 × 1024 profile. The landscape body uses a 38 px hard minimum, prefers 3–7
+lines, soft-limits at 8, and never allows more than 10. Long passages become exact,
+sentence-aligned excerpts around the highlighted time phrase instead of shrinking indefinitely.
 
 `render` and `render-now` use the existing selector and normally persist shuffle/history state.
 Add `--preview` for non-mutating visual work. `render-id` is always non-mutating; for a shared

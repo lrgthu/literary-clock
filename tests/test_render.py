@@ -75,7 +75,7 @@ def test_render_quote_rejects_mismatched_highlight() -> None:
 
 def test_exact_highlight_span_becomes_one_bold_segment(renderer: PillowRenderer) -> None:
     quote = render_quote()
-    layout = LayoutEngine(renderer.font).layout(quote, BUILTIN_PROFILES["paperwhite-1-3"])
+    layout = LayoutEngine(renderer.font).layout(quote, BUILTIN_PROFILES["paperwhite-1-2"])
     highlighted = [
         segment for line in layout.body_lines for segment in line.segments if segment.highlighted
     ]
@@ -158,10 +158,10 @@ def test_adaptive_font_sizing_shrinks_long_quotes(renderer: PillowRenderer) -> N
 def test_attribution_order_and_italic_role(renderer: PillowRenderer) -> None:
     quote = render_quote()
     engine = LayoutEngine(renderer.font)
-    book_first = engine.layout(quote, BUILTIN_PROFILES["paperwhite-1-3"])
+    book_first = engine.layout(quote, BUILTIN_PROFILES["paperwhite-1-2"])
     author_first = engine.layout(
         quote,
-        BUILTIN_PROFILES["paperwhite-1-3"],
+        BUILTIN_PROFILES["paperwhite-1-2"],
         attribution_style=AttributionStyle.AUTHOR_BOOK,
     )
     assert book_first.attribution_lines[0].text.startswith("— The Example Book")
@@ -178,7 +178,7 @@ def test_unicode_punctuation_and_accents_render(renderer: PillowRenderer) -> Non
         title="À la recherche",
         author="Élise D’Arcy",
     )
-    frame = renderer.render(quote, BUILTIN_PROFILES["paperwhite-1-3"])
+    frame = renderer.render(quote, BUILTIN_PROFILES["paperwhite-1-2"])
     assert frame.image.mode == "L"
     assert not frame.diagnostics.unsupported_glyphs
 
@@ -248,6 +248,66 @@ def test_preview_does_not_mutate_selector_history(tmp_path: Path) -> None:
 def test_missing_font_fails_clearly(tmp_path: Path) -> None:
     with pytest.raises(FontNotFoundError, match="does not exist"):
         discover_font(tmp_path / "missing-serif.ttf")
+
+
+def test_explicit_four_face_family(renderer: PillowRenderer) -> None:
+    automatic = renderer.font
+    explicit = discover_font(
+        regular_path=automatic.regular,
+        bold_path=automatic.bold,
+        italic_path=automatic.italic,
+        bold_italic_path=automatic.bold_italic,
+    )
+    assert explicit.is_complete_family
+    assert explicit.regular == automatic.regular
+    assert explicit.bold == automatic.bold
+    assert explicit.italic == automatic.italic
+
+
+def test_explicit_family_rejects_missing_bold(renderer: PillowRenderer) -> None:
+    automatic = renderer.font
+    with pytest.raises(FontNotFoundError, match="missing: bold"):
+        discover_font(
+            regular_path=automatic.regular,
+            italic_path=automatic.italic,
+            bold_italic_path=automatic.bold_italic,
+        )
+
+
+def test_explicit_family_rejects_missing_italic(renderer: PillowRenderer) -> None:
+    automatic = renderer.font
+    with pytest.raises(FontNotFoundError, match="missing: italic"):
+        discover_font(
+            regular_path=automatic.regular,
+            bold_path=automatic.bold,
+            bold_italic_path=automatic.bold_italic,
+        )
+
+
+def test_single_face_fallback_reports_unavailable_styles(renderer: PillowRenderer) -> None:
+    selection = discover_font(renderer.font.regular)
+    assert not selection.is_complete_family
+    assert selection.bold is None
+    assert selection.italic is None
+    assert selection.bold_italic is None
+    frame = PillowRenderer(selection).render(render_quote(), BUILTIN_PROFILES["pw4_landscape"])
+    assert not frame.diagnostics.bold_face_available
+    assert not frame.diagnostics.italic_face_available
+
+
+def test_automatic_font_discovery_returns_complete_family() -> None:
+    assert discover_font().is_complete_family
+
+
+def test_paperwhite_generations_have_correct_separate_profiles() -> None:
+    early = get_device_profile("paperwhite-1")
+    pw2 = get_device_profile("paperwhite-2")
+    pw3 = get_device_profile("paperwhite-3")
+    legacy_alias = get_device_profile("paperwhite-1-3")
+    assert early.name == pw2.name == "paperwhite-1-2"
+    assert (early.width, early.height, early.pixel_density_ppi) == (758, 1024, 212)
+    assert (pw3.width, pw3.height, pw3.pixel_density_ppi) == (1072, 1448, 300)
+    assert legacy_alias == early
 
 
 def test_missing_glyph_is_reported(renderer: PillowRenderer) -> None:
