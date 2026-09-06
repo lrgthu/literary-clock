@@ -100,6 +100,7 @@ attributions.
 - SQLite integrity: `ok`; foreign-key violations: 0.
 - Deterministic PW4 QA: 32 / 32 frames; clipping/layout failures: 0 / 0; unsupported
   glyphs: none.
-- GitHub Actions: pending final push.
+- GitHub Actions: PASS for implementation commit `d1eb19f` —
+  [run 34017145770](https://github.com/lrgthu/literary-clock/actions/runs/34017145770).
 
-The remote result will be updated after the final push.
+The workflow passed Python 3.11 pytest, Ruff lint, and Ruff format checks on Linux.
