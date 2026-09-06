@@ -33,6 +33,13 @@ from litclock.mining import (
     write_phase2a_report,
 )
 from litclock.models import Quote
+from litclock.multilingual import (
+    export_review_sample as export_multilingual_review_sample,
+)
+from litclock.multilingual import import_high_confidence as import_multilingual_high_confidence
+from litclock.multilingual import mine_multilingual_sources
+from litclock.multilingual_sources import acquire_sources as acquire_multilingual_sources
+from litclock.multilingual_sources import load_source_manifest
 from litclock.phase2a5 import run_phase2a5
 from litclock.phase2c import (
     activate_phase2c,
@@ -61,6 +68,8 @@ from litclock.wikisource_mining import mine_wikisource_dump, revalidate_wikisour
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE = PROJECT_ROOT / "data" / "generated" / "litclock.sqlite3"
 DEFAULT_REPORT_DIRECTORY = PROJECT_ROOT / "data" / "generated"
+MULTILINGUAL_MANIFEST = PROJECT_ROOT / "corpus" / "multilingual_sources.json"
+MULTILINGUAL_DATA = PROJECT_ROOT / "data" / "public_domain" / "multilingual" / "gutenberg"
 
 
 def current_hhmm(now_provider: Callable[[], datetime] = datetime.now) -> str:
@@ -219,6 +228,46 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser = commands.add_parser("stats", help="calculate and write corpus coverage reports")
     _database_argument(stats_parser)
     stats_parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORT_DIRECTORY)
+    stats_parser.add_argument(
+        "--language",
+        choices=("en", "fr", "zh", "mixed"),
+        default="en",
+        help="language family to measure (default: en)",
+    )
+
+    multilingual_acquire = commands.add_parser(
+        "multilingual-acquire", help="acquire checksum-pinned French/Chinese pilot sources"
+    )
+    multilingual_acquire.add_argument("--language", choices=("fr", "zh"), required=True)
+    multilingual_acquire.add_argument("--manifest", type=Path, default=MULTILINGUAL_MANIFEST)
+    multilingual_acquire.add_argument("--data-dir", type=Path, default=MULTILINGUAL_DATA)
+    multilingual_acquire.add_argument("--force", action="store_true")
+
+    multilingual_mine = commands.add_parser(
+        "multilingual-mine", help="mine a bounded French/Chinese parser pilot"
+    )
+    _database_argument(multilingual_mine)
+    multilingual_mine.add_argument("--language", choices=("fr", "zh"), required=True)
+    multilingual_mine.add_argument("--manifest", type=Path, default=MULTILINGUAL_MANIFEST)
+    multilingual_mine.add_argument("--data-dir", type=Path, default=MULTILINGUAL_DATA)
+    multilingual_mine.add_argument("--stage", choices=("pilot", "large"), default="pilot")
+    multilingual_mine.add_argument("--limit-sources", type=int)
+
+    multilingual_review = commands.add_parser(
+        "multilingual-review-export", help="export deterministic multilingual review samples"
+    )
+    _database_argument(multilingual_review)
+    multilingual_review.add_argument("--language", choices=("fr", "zh"), required=True)
+    multilingual_review.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_REPORT_DIRECTORY / "multilingual_review"
+    )
+    multilingual_review.add_argument("--per-class", type=int, default=100)
+
+    multilingual_import = commands.add_parser(
+        "multilingual-import", help="import only HIGH multilingual candidates"
+    )
+    _database_argument(multilingual_import)
+    multilingual_import.add_argument("--language", choices=("fr", "zh"), required=True)
 
     show_parser = commands.add_parser("show", help="select a quote for HH:MM")
     show_parser.add_argument("time", help="24-hour time such as 16:37")
@@ -630,12 +679,62 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "stats":
             connection = connect_database(args.db)
             try:
-                stats = calculate_stats(connection)
+                initialize_database(connection)
+                stats = calculate_stats(connection, language=args.language)
             finally:
                 connection.close()
             paths = write_reports(stats, args.output_dir)
             _print_stats(stats)
-            print("Reports: " + ", ".join(str(path.relative_to(PROJECT_ROOT)) for path in paths))
+            print(
+                "Reports: "
+                + ", ".join(str(path.resolve().relative_to(PROJECT_ROOT)) for path in paths)
+            )
+        elif args.command == "multilingual-acquire":
+            receipt = acquire_multilingual_sources(
+                load_source_manifest(args.manifest),
+                args.data_dir,
+                language=args.language,
+                force=args.force,
+            )
+            print(json.dumps(receipt, indent=2, ensure_ascii=False))
+        elif args.command == "multilingual-mine":
+            connection = connect_database(args.db)
+            try:
+                summary = mine_multilingual_sources(
+                    connection,
+                    load_source_manifest(args.manifest),
+                    args.data_dir,
+                    language=args.language,
+                    stage=args.stage,
+                    limit_sources=args.limit_sources,
+                )
+            finally:
+                connection.close()
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+        elif args.command == "multilingual-review-export":
+            connection = connect_database(args.db)
+            try:
+                csv_path, markdown_path, counts = export_multilingual_review_sample(
+                    connection,
+                    args.output_dir,
+                    language=args.language,
+                    per_class=args.per_class,
+                )
+            finally:
+                connection.close()
+            print(
+                json.dumps(
+                    {"counts": counts, "csv": str(csv_path), "markdown": str(markdown_path)},
+                    indent=2,
+                )
+            )
+        elif args.command == "multilingual-import":
+            connection = connect_database(args.db)
+            try:
+                summary = import_multilingual_high_confidence(connection, language=args.language)
+            finally:
+                connection.close()
+            print(json.dumps(summary, indent=2))
         elif args.command == "show":
             _show(args.db, args.time, args.seed, args.sfw_only)
         elif args.command == "show-now":

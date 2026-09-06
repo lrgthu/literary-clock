@@ -85,6 +85,8 @@ _ABBREVIATIONS = {
     "yds",
 }
 _CLOSERS = "”’\"')]}»"
+_ZH_CLOSERS = "”’\"')]}»》」』】）"
+_FRENCH_ABBREVIATIONS = {"m", "mme", "mlle", "mes", "mgr"}
 
 
 def _local_name(tag: str) -> str:
@@ -171,8 +173,48 @@ def extract_paragraphs(path: Path, source_file: str | None = None) -> list[Extra
     return paragraphs
 
 
-def sentence_spans(text: str) -> list[tuple[int, int]]:
+def _chinese_sentence_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    start = 0
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char not in "。！？；":
+            if text.startswith("……", index):
+                index += 2
+                while text.startswith("……", index):
+                    index += 2
+                end = index
+            else:
+                index += 1
+                continue
+        else:
+            end = index + 1
+            index = end
+        while end < len(text) and text[end] in _ZH_CLOSERS:
+            end += 1
+        trimmed_start = start
+        while trimmed_start < end and text[trimmed_start].isspace():
+            trimmed_start += 1
+        if trimmed_start < end:
+            spans.append((trimmed_start, end))
+        start = end
+        while start < len(text) and text[start].isspace():
+            start += 1
+        index = start
+    if start < len(text):
+        end = len(text)
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if end > start:
+            spans.append((start, end))
+    return spans
+
+
+def sentence_spans(text: str, *, language: str = "en") -> list[tuple[int, int]]:
     """Split prose into conservative sentence spans while retaining exact offsets."""
+    if language == "zh":
+        return _chinese_sentence_spans(text)
     spans: list[tuple[int, int]] = []
     start = 0
     index = 0
@@ -213,6 +255,7 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
             )
             if not meridiem_at_end and (
                 token in _ABBREVIATIONS
+                or (language == "fr" and token in _FRENCH_ABBREVIATIONS)
                 or (len(token) == 1 and token.isalpha() and not direction_sentence_end)
             ):
                 index += 1
@@ -247,30 +290,41 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
 def _scores(quote: str, detection: TimeDetection) -> tuple[float, float, str | None]:
     length = len(quote)
     context_score = 40.0
-    if 80 <= length <= 350:
+    ideal_minimum = 24 if detection.language == "zh" else 80
+    acceptable_minimum = 12 if detection.language == "zh" else 40
+    maximum = 350 if detection.language != "zh" else 240
+    if ideal_minimum <= length <= maximum:
         context_score += 35
-    elif 40 <= length <= 600:
+    elif acceptable_minimum <= length <= 600:
         context_score += 22
     else:
         context_score -= 30
     if quote and (quote[0].isupper() or quote[0] in "“‘\"'"):
         context_score += 10
-    if quote.endswith((".", "?", "!", ".”", "?”", "!”", ".’", "?’", "!’")):
+    sentence_endings = (".", "?", "!", ".”", "?”", "!”", ".’", "?’", "!’")
+    if detection.language == "zh":
+        sentence_endings += ("。", "！", "？", "；", "……")
+    if quote.endswith(sentence_endings):
         context_score += 10
     repeated = quote.casefold().count(detection.text.casefold()) > 1
     if repeated:
         context_score -= 30
 
     words = re.findall(r"\b[^\W\d_]+(?:[’'][^\W\d_]+)?\b", quote, re.UNICODE)
+    lexical_units = (
+        [char for char in quote if "\u3400" <= char <= "\u9fff"]
+        if detection.language == "zh"
+        else words
+    )
     letters = sum(char.isalpha() for char in quote)
     literary_score = 25.0
-    if len(words) >= 8:
+    if len(lexical_units) >= 8:
         literary_score += 30
     if letters / max(1, len(quote)) >= 0.55:
         literary_score += 20
     if any(mark in quote for mark in (",", ";", ":", "“", '"')):
         literary_score += 15
-    if len(set(word.casefold() for word in words)) >= min(10, len(words)):
+    if len(set(word.casefold() for word in lexical_units)) >= min(10, len(lexical_units)):
         literary_score += 10
     metadata_like = bool(
         re.search(
@@ -284,8 +338,8 @@ def _scores(quote: str, detection: TimeDetection) -> tuple[float, float, str | N
         literary_score -= 60
 
     reason: str | None = None
-    if length < 40:
-        reason = "context shorter than 40 characters"
+    if length < acceptable_minimum:
+        reason = f"context shorter than {acceptable_minimum} characters"
     elif length > 600:
         reason = "containing sentence exceeds 600 characters"
     elif repeated:
@@ -296,14 +350,14 @@ def _scores(quote: str, detection: TimeDetection) -> tuple[float, float, str | N
         first_alpha := next((char for char in quote if char.isalpha()), "")
     ) and first_alpha.islower():
         reason = "sentence context begins mid-sentence"
-    elif not quote.endswith((".", "?", "!", ".”", "?”", "!”", ".’", "?’", "!’")):
+    elif not quote.endswith(sentence_endings):
         reason = "incomplete sentence boundary"
     return max(0.0, min(100.0, context_score)), max(0.0, min(100.0, literary_score)), reason
 
 
 def extract_quote_context(paragraph: str, detection: TimeDetection) -> QuoteContext:
     """Extract one or more complete sentences containing the exact detected expression."""
-    spans = sentence_spans(paragraph)
+    spans = sentence_spans(paragraph, language=detection.language)
     containing = next(
         (
             index
@@ -318,7 +372,8 @@ def extract_quote_context(paragraph: str, detection: TimeDetection) -> QuoteCont
         start, end = spans[containing]
         previous = containing - 1
         following = containing + 1
-        while end - start < 80:
+        target_context_length = 40 if detection.language == "zh" else 80
+        while end - start < target_context_length:
             choices: list[tuple[str, int, int]] = []
             if following < len(spans):
                 choices.append(("following", start, spans[following][1]))

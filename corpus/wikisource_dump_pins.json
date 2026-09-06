@@ -1,0 +1,30 @@
+{
+  "manifest_version": 1,
+  "pinned_at": "2026-09-06",
+  "status": "FR-0/ZH-0 audited and pinned; intentionally not downloaded before parser pilots",
+  "checksum_note": "SHA-1 values are the checksums published in Wikimedia dumpstatus.json.",
+  "dumps": [
+    {
+      "project": "French Wikisource",
+      "language": "fr",
+      "dump_date": "20260901",
+      "dump_status_url": "https://dumps.wikimedia.org/frwikisource/20260901/dumpstatus.json",
+      "files": [
+        ["frwikisource-20260901-pages-articles-multistream1.xml-p1p1500000.bz2", 823197545, "496acc6b8a19003e6e0b37a001521165d323d087"],
+        ["frwikisource-20260901-pages-articles-multistream1.xml-p1500001p3000000.bz2", 850526727, "87bf1c24d14089099e1e37de5c4ec517c7b979ac"],
+        ["frwikisource-20260901-pages-articles-multistream1.xml-p3000001p4500000.bz2", 929467272, "6d70e5b69638453f09ab0188e7fdf30898054983"],
+        ["frwikisource-20260901-pages-articles-multistream1.xml-p4500001p4977685.bz2", 220195241, "af513d4abc9f2c9bf715a90574c7b758c7f1cd5c"]
+      ]
+    },
+    {
+      "project": "Chinese Wikisource",
+      "language": "zh",
+      "dump_date": "20260901",
+      "dump_status_url": "https://dumps.wikimedia.org/zhwikisource/20260901/dumpstatus.json",
+      "files": [
+        ["zhwikisource-20260901-pages-articles-multistream.xml.bz2", 7889421692, "dda878080c17a161236746f3c6f0ffe03ff974e1"],
+        ["zhwikisource-20260901-pages-articles-multistream-index.txt.bz2", 62835312, "9557d9f276d1bb26fd75adc82de34fc864331c82"]
+      ]
+    }
+  ]
+}
