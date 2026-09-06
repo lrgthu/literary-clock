@@ -16,6 +16,8 @@ should remain small and normally cloneable.
 - `public_domain/standard_ebooks/books/`: shallow/sparse book repositories.
 - `public_domain/gutenberg/`: bulk catalogs, manifests, and downloaded plain texts.
 - `public_domain/wikisource/`: compressed XML dump, multistream index, and processing spool.
+- `public_domain/multilingual/gutenberg/{fr,zh}/`: checksum-pinned French/Chinese pilot texts and
+  local acquisition receipts.
 
 The legacy fetcher pins upstream commits and SHA-256 checksums in source code. Public-domain
 acquisition manifests record source URLs, revisions/dump dates, rights evidence, and checksums
@@ -26,6 +28,8 @@ MIT license.
 
 - `generated/litclock.sqlite3`: operational normalized corpus and selector state.
 - Coverage JSON/CSV, candidate audits, review queues, and mining statistics.
+- `generated/multilingual*`: multilingual pilot databases, deterministic review CSV/Markdown,
+  language coverage output, and English-regression validation clones.
 - `generated/render_previews/`: grayscale/1-bit frames and contact sheets.
 - `generated/pw4-*` and `generated/phase4b-*`: storage samples, versioned Kindle asset bundles,
   downloaded local scheduler releases, and physical-pilot evidence.

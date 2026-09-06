@@ -228,6 +228,31 @@ ambiguous and unmatched records. The report ranks mining targets by effective ca
 canonical candidate count, author diversity, book diversity, and time. The machine-readable minute
 report includes all 1,440 rows.
 
+### French and Chinese corpus track
+
+French and Chinese acquisition/mining is additive and does not change the default English
+selector. The bounded pilot inputs are checksum-pinned; raw texts, review context, and databases
+remain ignored.
+
+```bash
+uv run litclock multilingual-acquire --language fr
+uv run litclock multilingual-acquire --language zh
+uv run litclock multilingual-mine --language fr --stage pilot
+uv run litclock multilingual-mine --language zh --stage pilot
+uv run litclock multilingual-review-export --language fr
+uv run litclock multilingual-review-export --language zh
+uv run litclock multilingual-import --language fr
+uv run litclock multilingual-import --language zh
+uv run litclock stats --language fr
+uv run litclock stats --language zh
+uv run litclock stats --language mixed
+```
+
+Only resolved, novel `HIGH` candidates import automatically. Valid but AM/PM-ambiguous French or
+Chinese clock-face expressions remain in review data and receive no minute eligibility. See the
+[French/Chinese corpus report](docs/reports/MULTILINGUAL_CORPUS_FR_ZH_REPORT.md) and
+[corpus architecture](docs/corpus.md).
+
 ## Mine Standard Ebooks
 
 Start with a bounded sample. Completed books and cached downloads are skipped on later runs:
