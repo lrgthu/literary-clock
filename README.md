@@ -1,0 +1,451 @@
+# Literary Clock
+
+`literary-clock` is a Kindle-oriented literary clock that tells time through quotations from
+literature. Each frame displays one literary quotation containing the current time expression,
+with that phrase emphasized inside the author's original wording and quiet book/author attribution
+below it.
+
+The primary device is a **Kindle Paperwhite 4 / 10th Generation**, rendered natively at
+**1448 × 1072 landscape, 300 ppi**. Portrait remains supported. There is no standalone digital
+clock, date, weather, dashboard, iconography, border, or decorative interface.
+
+## Current V1 status
+
+- All 1,440 minutes have at least one effective display candidate.
+- The local operational corpus contains 7,091 unique selectable literary quotes and 8,730
+  quote-minute eligibility relationships.
+- Neutral exact 12-hour expressions can serve both matching AM and PM clock moments.
+- Selection uses persistent per-minute shuffle bags, 24-hour global quote cooldown, 12-hour book
+  cooldown, and 6-hour author cooldown.
+- The PW4 landscape audit leaves 8,727 display-safe relationships and zero empty display pools.
+- Corpus expansion is frozen for V1; 97 accepted sparse-tail exceptions remain below three
+  candidates.
+
+Exact phase snapshots and renderer measurements are in [`docs/reports/`](docs/reports/).
+
+This repository does **not** configure or communicate with a Kindle. It produces local bitmap
+previews only. Date, weather, dashboard, clock icons, and other ambient-display features are
+intentionally out of scope for V1: the screen is a quotation, its inline time phrase, and discreet
+literary attribution.
+
+## Architecture
+
+```text
+legacy corpora + Standard Ebooks + Project Gutenberg + English Wikisource
+                              ↓
+                  normalization + provenance
+                              ↓
+                       time semantics
+                              ↓
+                 quote-minute eligibility
+                              ↓
+              selector + persistent anti-repeat state
+                              ↓
+                    device renderability gate
+                              ↓
+                       Pillow renderer
+                              ↓
+                future Kindle FBInk/eips backend
+```
+
+The project is deliberately small and uses Python 3.11+, SQLite, PyYAML for the one authoritative
+YAML source, `mwparserfromhell` for structural Wikisource cleanup, pytest, ruff, and the standard
+library everywhere else.
+
+- `src/litclock/importers/` pins, fetches, parses, and merges upstream corpora.
+- `src/litclock/normalize.py` parses clock times, normalizes text, and recovers highlight offsets.
+- `src/litclock/db.py` owns the SQLite schema.
+- `src/litclock/stats.py` calculates full-day coverage and writes JSON, CSV, and Markdown reports.
+- `src/litclock/selector.py` implements persistent per-minute shuffle bags and soft attribution
+  cooldowns.
+- `src/litclock/render/models.py` defines the renderer-only `RenderQuote` contract, explicitly
+  separates canonical fields from display fields, and rejects unsafe highlight offsets.
+- `src/litclock/render/presentation.py` detects serialized/multi-record contamination, normalizes
+  catalog attribution for display only, and constructs exact sentence-aligned excerpts.
+- `src/litclock/render/layout.py` performs adaptive, highlight-aware wrapping with real font
+  metrics and proportional optical composition.
+- `src/litclock/render/pillow_renderer.py` produces deterministic grayscale and 1-bit PNG frames;
+  selection logic is deliberately absent from the renderer.
+- `src/litclock/render/profiles.py` contains proportional profiles for early Kindle, Paperwhite,
+  Basic 11, Paperwhite 5/11, Oasis, explicit PW4 portrait/landscape, and custom dimensions.
+- `src/litclock/standard_ebooks.py` indexes Standard Ebooks on GitHub, performs resumable sparse
+  acquisition, and records OPF metadata, commit IDs, and content checksums.
+- `src/litclock/xhtml.py` extracts semantic prose and exact source offsets from XHTML.
+- `src/litclock/timeparse.py` detects and conservatively resolves explicit literary time phrases.
+- `src/litclock/mining.py` scores candidates, deduplicates passages, prioritizes sparse minutes,
+  manages the review queue, and performs capped high-confidence imports.
+- `src/litclock/phase2a5.py` audits candidate disposition, runs the evidence-recording contextual
+  AM/PM pass, exports sparse-minute review packets, and performs controlled recovery imports.
+- `src/litclock/gutenberg.py` indexes the official Project Gutenberg bulk catalogs and performs
+  resumable, checksum-tracked plain-text acquisition from official rsync mirrors.
+- `src/litclock/gutenberg_text.py` strips Gutenberg boilerplate and extracts prose paragraphs while
+  retaining source offsets.
+- `src/litclock/gutenberg_mining.py` streams books through the shared time parser, rejects
+  source-specific false positives, deduplicates across all corpora, imports only into deficient
+  buckets, and produces the Phase 2B report and review queue.
+- `src/litclock/phase2c.py` separates textual clock-face semantics from display eligibility,
+  audits ambiguous candidates, plans capped counterfactuals, and activates shared AM/PM minute
+  relationships only after the counterfactual is saved.
+- `src/litclock/wikisource.py`, `wikisource_text.py`, and `wikisource_mining.py` acquire an official
+  English Wikisource multistream dump, parse XML and wiki markup structurally, quarantine uncertain
+  licenses, and target only minute pools below three.
+- `src/litclock/phase2d.py` freezes the exact sparse-tail target set, recovers retained candidates,
+  exports the focused review queue, and produces the Phase 2D report.
+- `data/third_party/` holds checksum-verified upstream snapshots and their provenance files.
+- `data/public_domain/standard_ebooks/` holds the source index and manifest. Its ignored `books/`
+  cache contains sparse working copies and is not part of the main Git history.
+- `data/public_domain/gutenberg/` holds the ignored bulk catalogs, resumable text cache, and source
+  manifests. Full-run texts may be pruned after checksums and candidates are committed.
+- `data/public_domain/wikisource/` is an ignored local cache for the official compressed XML dump,
+  multistream index, checksum manifest, and disposable target-page spools. The dump is never
+  expanded permanently or added to normal Git history.
+- `data/generated/` holds the rebuildable SQLite database and coverage outputs.
+- `data/local/` is ignored scratch space for future locally mined material.
+
+See [architecture](docs/architecture.md), [corpus design](docs/corpus.md),
+[renderer behavior](docs/renderer.md), and the [future Kindle plan](docs/FBINK_RENDER_PLAN.md) for
+focused design documentation.
+
+The normalized `quotes` table has one canonical row per distinct literary passage. Textual meaning
+is recorded separately in `quote_time_semantics`, while `quote_minute_eligibility` maps that one
+quote to one or more legitimate display minutes. An unresolved exact 12-hour clock-face expression
+can therefore have AM and PM relationships without duplicating the canonical quote. Explicit
+meridiem or deterministic source context keeps only the resolved side. Every upstream row that
+merged into a canonical quote remains in `quote_provenance`; invalid-time and malformed rows remain
+in `import_issues`. `import_runs` and `sources` make each build auditable, while `shuffle_state` and
+`display_history` provide selection persistence.
+
+Highlight validation has five corpus statuses:
+
+- `VERIFIED_EXACT`: one literal occurrence of `time_text` in the display quote.
+- `VERIFIED_NORMALIZED`: one occurrence after Unicode/case/punctuation/spacing normalization,
+  with offsets mapped back into the display quote.
+- `AMBIGUOUS`: more than one plausible occurrence; no offsets are trusted.
+- `TIME_TEXT_NOT_FOUND`: no plausible occurrence; no offsets are trusted.
+- `INVALID_TIME`: the source time is not a valid 24-hour `HH:MM` value and the row is quarantined.
+
+Only the two verified statuses are automatically selectable.
+
+## Upstream corpora and licensing
+
+The initial corpus imports pinned snapshots from:
+
+1. [kapoorankush/litclock](https://github.com/kapoorankush/litclock), whose assembled quote
+   database is distributed upstream under CC BY-NC-SA 4.0. Its MIT license applies to its software,
+   not its quote database.
+2. [zenbuffy/LiteraryClock](https://github.com/zenbuffy/LiteraryClock). The repository has no
+   explicit root corpus license and credits substantial data derived from the JohsEnevoldsen
+   corpus. This project records the license as `NOASSERTION`; no permission is implied here.
+3. [JohsEnevoldsen/literature-clock](https://github.com/JohsEnevoldsen/literature-clock), licensed
+   upstream under CC BY-NC-SA 2.5 Generic.
+
+The Zenbuffy YAML is used instead of its derived CSV because the YAML is current and structurally
+preserves multiline records; the current CSV has unescaped physical newlines and cannot be parsed
+without conflating quote fragments with records.
+
+Phase 2A mines the source repositories published by
+[Standard Ebooks](https://github.com/standardebooks). The pipeline reads only
+`src/epub/text/*.xhtml`, `src/epub/content.opf`, and repository license files. Standard Ebooks'
+contributors dedicate their contributions through CC0; each repository states that its source
+text and artwork are believed to be in the United States public domain and warns that other
+jurisdictions may differ. Commit, repository, rights, and checksum metadata are retained per book.
+Project Gutenberg is intentionally not used in Phase 2A. Phase 2B independently mines only works
+whose RDF rights field is exactly `Public domain in the USA.`; it does not treat permission-only
+works as public domain. Catalog and literary-filter metadata, source identifiers, checksums, and
+acquisition timestamps remain attached to each book and candidate.
+
+Phase 2D uses the official English Wikisource database dumps, not individual web pages. Wikisource
+is a mixed-rights collection: automatic imports require work-level public-domain evidence, while
+unknown or freely licensed material is quarantined for review. Each accepted quote records its
+page title, revision, dump date, source URL, work metadata, license evidence, and source locator.
+
+Our source code is MIT-licensed. Third-party corpus files, the normalized database, and
+corpus-derived reports are **not thereby relicensed as MIT**. The normalized database and bulk
+source datasets are intentionally not published in this Git repository. See [NOTICE.md](NOTICE.md)
+for exact commits, source paths, and license cautions. No font binaries are stored here.
+
+## Install
+
+Install [`uv`](https://docs.astral.sh/uv/) and then create the locked project environment:
+
+```bash
+uv sync
+```
+
+`uv` reads `.python-version` and can provision a compatible Python automatically.
+
+## Fetch and import
+
+Download and checksum-verify the pinned source files:
+
+```bash
+uv run litclock fetch
+```
+
+Build a fresh database atomically at `data/generated/litclock.sqlite3`:
+
+```bash
+uv run litclock import
+```
+
+An existing database is replaced only after the complete new import succeeds. Use `--db PATH` on
+`import`, `stats`, or selection commands to work with another SQLite file.
+
+## Coverage analysis
+
+```bash
+uv run litclock stats
+```
+
+This prints the core coverage metrics and writes:
+
+- `data/generated/coverage.json`
+- `data/generated/minute_coverage.csv`
+- `data/generated/COVERAGE_REPORT.md`
+
+Coverage metrics and thresholds count effective quote-minute eligibility relationships backed by
+selectable quotes with verified highlight offsets. Reports distinguish canonical literary quotes,
+unique selectable quotes, and quote-minute relationships; a shared quote counts once in the first
+two totals but once in each legitimate minute pool. The canonical total also includes retained
+ambiguous and unmatched records. The report ranks mining targets by effective candidate count,
+canonical candidate count, author diversity, book diversity, and time. The machine-readable minute
+report includes all 1,440 rows.
+
+## Mine Standard Ebooks
+
+Start with a bounded sample. Completed books and cached downloads are skipped on later runs:
+
+```bash
+uv run litclock mine-standard-ebooks --limit-books 20
+uv run litclock mine-standard-ebooks --limit-books 100 --workers 8
+```
+
+The catalog is discovered from the Standard Ebooks GitHub organization rather than a hardcoded
+title list. Acquisition uses shallow, blob-filtered sparse clones with retry/backoff. The manifest
+at `data/public_domain/standard_ebooks/manifest.jsonl` records repository URL, commit, metadata,
+rights, timestamps, processing state, counts, and checksums. Use `--refresh-catalog` to update the
+cached repository index and `--reprocess` to re-run indexed books after parser changes.
+
+The miner parses XHTML structurally, excludes identifiable front/back matter and navigation, and
+preserves file, section, paragraph, and character locators. Exact 24-hour or strongly resolved
+AM/PM candidates with clean context and exact highlights can be imported; ambiguous, approximate,
+ranged, malformed, and lower-quality passages remain reviewable.
+
+```bash
+uv run litclock mining-stats
+uv run litclock review-export
+uv run litclock import-mined --confidence high
+uv run litclock stats
+```
+
+High-confidence import dynamically favors sparse buckets and author/book diversity, and stops
+adding to a minute once it has seven selectable quotes. The generated Phase 2A comparison is
+`data/generated/PHASE2A_REPORT.md`. The CSV review export is intentionally ignored because it is a
+large rebuildable artifact.
+
+## Audit and recover existing Standard Ebooks candidates
+
+Phase 2A.5 does not fetch another corpus. It accounts for every original high-confidence candidate,
+simulates capped counterfactual imports, and revisits only AM/PM-ambiguous candidates whose two
+possible buckets are not already full:
+
+```bash
+uv run litclock phase2a5
+```
+
+The contextual resolver automatically accepts only a daypart directly linked to the time phrase in
+its containing sentence or deterministic elapsed-time arithmetic from a nearby explicit absolute
+time. It stores the evidence and source locator for every automatic decision. Weak narrative
+continuity remains unresolved. Use `--audit-only` to generate the analysis without importing newly
+resolved candidates.
+
+The command regenerates coverage files and writes `PHASE2A5_CANDIDATE_AUDIT.csv`,
+`PHASE2A5_AUDIT.md`, `PHASE2A5_REVIEW_PRIORITY.csv`, and `PHASE2A5_REPORT.md` under
+`data/generated/`. By default, it also copies the final report to
+`~/Desktop/LITERARY_CLOCK_PHASE2A5_REPORT.md`; override that path with `--desktop-report PATH`.
+
+## Mine Project Gutenberg
+
+The Gutenberg pipeline follows the project's bulk-access guidance: it downloads the compressed
+CSV and RDF catalogs and selectively retrieves generated UTF-8 plain text from official rsync
+mirrors. It never crawls normal ebook pages. Acquisition and processing are restartable; the
+SQLite book table is the live manifest and `data/public_domain/gutenberg/books_manifest.jsonl` is
+an exported snapshot. `target_expressions.json` records the exact parser-supported variants and
+live deficit for every target minute. Catalog feeds, working texts, and the large database remain
+outside normal Git history.
+
+Run the deterministic staged rollout separately:
+
+```bash
+uv run litclock mine-gutenberg --stage pilot-a --workers 4
+uv run litclock mine-gutenberg --stage pilot-b --workers 8
+uv run litclock mine-gutenberg --stage full --workers 10
+```
+
+Or run all three stages without a manual gate:
+
+```bash
+uv run litclock mine-gutenberg --stage all
+```
+
+Pilot A is cumulative to about 500 eligible books, Pilot B to about 5,000, and the full stage scans
+all eligible indexed books. The full stage prunes only successfully processed raw texts by default
+to bound disk usage; pass `--keep-text-cache` when sufficient storage is available. A resumed run
+does not download or process books already marked complete.
+
+The semantic parser is shared with Standard Ebooks. Gutenberg-specific extraction removes the
+header/footer license and rejects catalog, citation, ratio, timetable, legal-reference, and other
+nonliterary patterns. Automatic import requires explicit U.S. public-domain rights metadata,
+English literary metadata, an exact unambiguous minute, exact highlight offsets, clean context,
+cross-source novelty, and a target bucket below seven.
+
+```bash
+uv run litclock gutenberg-stats
+uv run litclock gutenberg-review-export
+uv run litclock import-gutenberg
+uv run litclock gutenberg-revalidate
+```
+
+`gutenberg-review-export` includes unresolved AM/PM candidates only when either possible bucket is
+below three. Reports are written to `data/generated/PHASE2B_REPORT.md`,
+`PHASE2B_REVIEW_PRIORITY.csv`, and `PHASE2B_EMPTY_MINUTE_AUDIT.csv`; the ordinary coverage JSON,
+CSV, and Markdown files are regenerated after import. `gutenberg-revalidate` reapplies the current
+rights, metadata, parser, and prose gates to a resumable scan, safely revokes any obsolete imports,
+and refills sparse buckets only with candidates that still pass every gate.
+
+## Activate shared 12-hour clock-face eligibility
+
+Phase 2C changes only the AM/PM policy for an exact, unresolved 12-hour expression. A phrase such
+as `3:46`, `a quarter past three`, or `nineteen minutes past four` may serve both corresponding
+clock moments when neither the displayed excerpt nor trusted source context establishes a
+daypart. Explicit AM/PM, directly linked daypart wording, and deterministic local temporal evidence
+remain authoritative. Approximate times, ranges, false positives, duplicates, bad highlights,
+invalid provenance, and low-quality context remain excluded.
+
+The counterfactual must be created before activation:
+
+```bash
+uv run litclock phase2c-counterfactual
+uv run litclock phase2c-activate
+uv run litclock phase2c-report
+```
+
+Scenario B fills deficient minute pools with quality-ranked relationships; Scenario C also prefers
+new authors and books, then relaxes diversity preferences when needed. Both stop at seven effective
+candidates per minute. Outputs include `PHASE2C_COUNTERFACTUAL.md`, `PHASE2C_REPORT.md`,
+`PHASE2C_1546_AUDIT.csv`, and a sparse-bucket-only `PHASE2C_CONTEXT_REVIEW.csv`.
+
+## Target the Phase 2D sparse tail with Wikisource
+
+Phase 2D freezes the exact pools below three, reviews retained candidates first, then scans one
+official English Wikisource `pages-articles-multistream` dump. The multistream index permits
+deterministic parallel decompression. Each page is scanned once; only pages whose raw expression
+maps through the shared parser to a live target are rendered with a wiki-markup AST. Mainspace is
+processed before `Page:` transcriptions, preventing the same passage from being counted twice.
+
+```bash
+uv run litclock phase2d-targets
+uv run litclock phase2d-recover-existing
+uv run litclock acquire-wikisource --dump-date YYYYMMDD
+uv run litclock mine-wikisource --dump-date YYYYMMDD
+uv run litclock phase2d-revalidate
+uv run litclock phase2d-review-export
+uv run litclock phase2d-report
+```
+
+Automatic import requires a verified U.S. public-domain work, clean literary attribution, an exact
+time and highlight, cross-source novelty, and a still-active pool below three. Unknown licensing,
+missing attribution, and genuinely uncertain context remain in the compact review export; citations,
+ratios, logs, official documents, broken prose, and OCR corruption do not. Outputs are
+`PHASE2D_TARGETS.csv`, `PHASE2D_REVIEW_PRIORITY.csv`, and `PHASE2D_REPORT.md`.
+
+## Select and preview a quote
+
+```bash
+uv run litclock show 16:37
+uv run litclock show-now
+```
+
+The terminal preview marks the stored highlight span in ANSI bold when the output is a compatible
+terminal and uses Markdown `**bold**` markers otherwise. `--seed INTEGER` injects a deterministic
+RNG for repeatable experiments. `--sfw-only` restricts candidates to records explicitly marked
+safe; it excludes both unsafe and unknown records.
+
+Selection uses a persistent shuffle bag for each minute. A quote does not repeat until every
+currently available quote for that minute has been used. Shared relationships retain one global
+quote ID, so displaying a quote from its AM pool updates the same persistent history consulted by
+its PM pool. The selector first prefers not to repeat an exact quote within 24 hours, then prefers
+books not shown in the past 12 hours and authors not shown in the past 6 hours, progressively
+relaxing these preferences when a minute has no alternative.
+
+## Render a literary page
+
+Pillow is the bitmap backend. It discovers a supported local serif family (EB Garamond, Linux
+Libertine, Georgia, DejaVu Serif, or Liberation Serif, in preference order) and records the exact
+path in each JSON metadata sidecar. Font files are never copied into this repository. Pass
+`--font PATH` or set `LITCLOCK_FONT` to choose another local font explicitly.
+
+```bash
+uv run litclock render 15:46 --device pw4 --orientation landscape --preview
+uv run litclock render-now --device pw4 --orientation landscape --mode 1bit
+uv run litclock render-id 42 --device pw4 --orientation landscape
+uv run litclock render 16:37 --device custom --width 800 --height 1200 --preview
+```
+
+The V1 primary profile is Kindle Paperwhite 4 landscape: **1448 × 1072 at 300 ppi**. Its layout is
+computed natively rather than rotating a 1072 × 1448 portrait frame. `pw4_portrait` remains a
+built-in profile. The landscape body uses a 38 px hard minimum, prefers 3–7 lines, soft-limits at
+8, and never allows more than 10. Long passages become exact, sentence-aligned excerpts around
+the highlighted time phrase instead of shrinking indefinitely.
+
+`render` and `render-now` use the existing selector and normally persist shuffle/history state.
+Add `--preview` for non-mutating visual work. `render-id` is always non-mutating; for a shared
+clock-face quote, `--time HH:MM` chooses one of its eligible display relationships. Available
+modes are `grayscale` and `1bit`; crisp threshold conversion is the 1-bit default, while
+`--dither floyd-steinberg` exists for deliberate comparison. The clock face never includes a
+separate digital time.
+
+Before layout, the presentation gate rejects raw serialized corpus rows, concatenated records,
+and corrupt excerpt/source mappings. A rejected selection is not written to display history; the
+selector tries another quote from the same minute without disturbing the rejected item in its
+shuffle bag. Canonical quote/title/author values are never changed. Display-only attribution
+removes life dates and catalog roles, shortens clear subtitle tails, compresses three or more
+creators, and renders collections with a named editor as `Edited by …`. Title occupies at most two
+lines, creator at most one, and the entire attribution at most three.
+
+Generate the deterministic corpus-extreme visual suite and its diagnostic reports with:
+
+```bash
+uv run litclock render-qa
+```
+
+This audits every selectable quote and all 1,440 effective minute pools for PW4 landscape, then
+writes `data/generated/RENDER_QA.json`, `RENDER_QA.md`,
+`PHASE3_RENDER_FINALIZATION_REPORT.md`, and ignored PNG/contact-sheet artifacts under
+`data/generated/render_previews/pw4_landscape/`. Every frame records canonical/display length,
+excerpt offsets, font sizes, line counts, attribution transformations, body/attribution bounds,
+occupancy, highlight wrapping, clipping, fallback-font use, output mode, and unsupported glyphs.
+
+## Development
+
+```bash
+uv run pytest
+uv run ruff check .
+```
+
+The third-party inputs and reports are small enough to inspect. The rebuildable SQLite database,
+virtual environment, caches, and local scratch corpus are ignored rather than committed.
+
+## Roadmap
+
+- Phase 1 — corpus core: reproducible import, validation, deduplication, coverage, and selection.
+- Phase 2A — deterministic Standard Ebooks mining and conservative automatic acceptance.
+- Phase 2A.5 — high-confidence accounting and evidence-backed recovery from ambiguous detections.
+- Phase 2B — coverage-driven Project Gutenberg mining with conservative cross-source import.
+- Phase 2C — shared 12-hour clock-face semantics, multi-minute eligibility, and global quote
+  cooldowns.
+- Phase 2D — targeted retained-candidate recovery and official English Wikisource dump mining for
+  the below-three sparse tail, stopping automatic imports as each pool reaches three.
+- Phase 3 — device-independent literary page layout, bitmap rendering, and visual QA.
+- Phase 4 — explicitly authorized on-device FBInk/eips backend experiment for the exact Kindle.
+- Phase 5 — Kindle deployment and operational refresh integration.

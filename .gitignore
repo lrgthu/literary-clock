@@ -1,0 +1,65 @@
+# Python and uv
+.venv/
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.python-version.local
+
+# Test, lint, and coverage caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Databases and transient database files
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Logs and scratch space
+*.log
+logs/
+tmp/
+cache/
+
+# Corpus snapshots are checksum-pinned and fetched on demand. They carry
+# licenses separate from this repository's MIT-licensed source code.
+data/third_party/
+
+# Multi-GB Standard Ebooks, Project Gutenberg, and Wikisource acquisition
+# caches/manifests are local rebuildable state, not Git content.
+data/public_domain/
+
+# SQLite, review queues, machine-readable analyses, and bitmap previews are
+# reproducible local artifacts. Curated human-readable snapshots live in
+# docs/reports/ instead.
+data/generated/
+
+# Local backups and experimental databases.
+data/local/*
+!data/local/.gitkeep
