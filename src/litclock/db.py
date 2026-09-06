@@ -9,6 +9,7 @@ from litclock.models import QualityStatus, Quote
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
+PRAGMA user_version = 2;
 
 CREATE TABLE IF NOT EXISTS import_runs (
     id INTEGER PRIMARY KEY,
@@ -29,6 +30,12 @@ CREATE TABLE IF NOT EXISTS sources (
     slug TEXT NOT NULL UNIQUE,
     source_url TEXT NOT NULL,
     source_license TEXT NOT NULL,
+    source_project TEXT NOT NULL DEFAULT 'legacy',
+    language TEXT NOT NULL DEFAULT 'en',
+    script_variant TEXT,
+    translator_editor TEXT,
+    publication_metadata TEXT,
+    rights_evidence TEXT,
     upstream_commit TEXT NOT NULL,
     corpus_path TEXT NOT NULL,
     corpus_sha256 TEXT NOT NULL,
@@ -46,12 +53,15 @@ CREATE TABLE IF NOT EXISTS quotes (
     author TEXT NOT NULL,
     sfw INTEGER CHECK (sfw IN (0, 1) OR sfw IS NULL),
     language TEXT NOT NULL DEFAULT 'en',
+    script_variant TEXT,
     source_name TEXT NOT NULL,
     source_url TEXT NOT NULL,
     source_license TEXT NOT NULL,
     source_record_id TEXT,
     quote_hash TEXT NOT NULL,
     normalized_quote_hash TEXT NOT NULL,
+    text_normalized_hash TEXT,
+    language_identity_hash TEXT,
     highlight_start INTEGER,
     highlight_end INTEGER,
     quality_status TEXT NOT NULL,
@@ -67,6 +77,7 @@ CREATE INDEX IF NOT EXISTS quotes_minute_idx ON quotes(minute_of_day);
 CREATE INDEX IF NOT EXISTS quotes_author_idx ON quotes(author);
 CREATE INDEX IF NOT EXISTS quotes_title_idx ON quotes(title);
 CREATE INDEX IF NOT EXISTS quotes_quote_hash_idx ON quotes(quote_hash);
+CREATE INDEX IF NOT EXISTS quotes_language_minute_idx ON quotes(language, minute_of_day);
 
 CREATE TABLE IF NOT EXISTS quote_provenance (
     id INTEGER PRIMARY KEY,
@@ -80,6 +91,11 @@ CREATE TABLE IF NOT EXISTS quote_provenance (
     raw_title TEXT NOT NULL,
     raw_author TEXT NOT NULL,
     raw_sfw INTEGER CHECK (raw_sfw IN (0, 1) OR raw_sfw IS NULL),
+    raw_language TEXT NOT NULL DEFAULT 'en',
+    raw_script_variant TEXT,
+    translator_editor TEXT,
+    publication_metadata TEXT,
+    rights_evidence TEXT,
     raw_quote_hash TEXT NOT NULL,
     validation_status TEXT NOT NULL,
     highlight_start INTEGER,
@@ -93,6 +109,10 @@ CREATE INDEX IF NOT EXISTS provenance_quote_idx ON quote_provenance(quote_id);
 
 CREATE TABLE IF NOT EXISTS quote_time_semantics (
     quote_id INTEGER PRIMARY KEY REFERENCES quotes(id) ON DELETE CASCADE,
+    language TEXT NOT NULL DEFAULT 'en',
+    matched_text TEXT,
+    possible_minutes TEXT NOT NULL DEFAULT '[]',
+    semantic_confidence TEXT,
     time_semantics TEXT NOT NULL,
     clockface_minute INTEGER CHECK (clockface_minute BETWEEN 0 AND 719),
     narrative_resolution TEXT NOT NULL,
@@ -106,6 +126,7 @@ CREATE TABLE IF NOT EXISTS quote_time_semantics (
 
 CREATE TABLE IF NOT EXISTS quote_minute_eligibility (
     quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    language TEXT NOT NULL DEFAULT 'en',
     minute_of_day INTEGER NOT NULL CHECK (minute_of_day BETWEEN 0 AND 1439),
     eligibility_type TEXT NOT NULL,
     confidence TEXT NOT NULL,
@@ -162,17 +183,91 @@ BEGIN
 END;
 
 CREATE VIEW IF NOT EXISTS quote_minute_pool AS
-SELECT quote_id, minute_of_day, eligibility_type, confidence, evidence_type, evidence_text,
+SELECT quote_id, language, minute_of_day, eligibility_type, confidence,
+       evidence_type, evidence_text,
        source_candidate_type, source_candidate_id
 FROM quote_minute_eligibility
 UNION ALL
-SELECT q.id, q.minute_of_day, 'EXACT_24H', 'LEGACY_VERIFIED',
+SELECT q.id, q.language, q.minute_of_day, 'EXACT_24H', 'LEGACY_VERIFIED',
        'LEGACY_CANONICAL_MINUTE', q.time_24h, NULL, NULL
 FROM quotes AS q
 WHERE q.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
   AND NOT EXISTS (
       SELECT 1 FROM quote_minute_eligibility AS e WHERE e.quote_id = q.id
   );
+
+CREATE TABLE IF NOT EXISTS multilingual_runs (
+    id INTEGER PRIMARY KEY,
+    language TEXT NOT NULL CHECK (language IN ('fr', 'zh')),
+    stage TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETE', 'FAILED')),
+    sources_scanned INTEGER NOT NULL DEFAULT 0,
+    characters_scanned INTEGER NOT NULL DEFAULT 0,
+    expressions_detected INTEGER NOT NULL DEFAULT 0,
+    high_confidence INTEGER NOT NULL DEFAULT 0,
+    medium INTEGER NOT NULL DEFAULT 0,
+    ambiguous_clockface INTEGER NOT NULL DEFAULT 0,
+    rejected INTEGER NOT NULL DEFAULT 0,
+    imported_quotes INTEGER NOT NULL DEFAULT 0,
+    error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS multilingual_candidates (
+    id INTEGER PRIMARY KEY,
+    source_id INTEGER NOT NULL REFERENCES sources(id),
+    language TEXT NOT NULL CHECK (language IN ('fr', 'zh')),
+    script_variant TEXT,
+    source_record_id TEXT NOT NULL,
+    source_locator TEXT NOT NULL,
+    source_document_checksum TEXT NOT NULL,
+    work_title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    translator_editor TEXT,
+    matched_text TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    source_expression_start INTEGER NOT NULL,
+    source_expression_end INTEGER NOT NULL,
+    highlight_start INTEGER NOT NULL,
+    highlight_end INTEGER NOT NULL,
+    minute_of_day INTEGER CHECK (minute_of_day BETWEEN 0 AND 1439),
+    possible_minutes TEXT NOT NULL,
+    semantic_type TEXT NOT NULL,
+    time_confidence TEXT NOT NULL,
+    confidence_class TEXT NOT NULL CHECK (
+        confidence_class IN ('HIGH', 'MEDIUM', 'AMBIGUOUS_CLOCKFACE', 'REJECT')
+    ),
+    parser_rule TEXT NOT NULL,
+    evidence_text TEXT,
+    context_before TEXT,
+    context_after TEXT,
+    review_status TEXT NOT NULL DEFAULT 'UNREVIEWED' CHECK (
+        review_status IN ('UNREVIEWED', 'ACCEPTED', 'REJECTED', 'NEEDS_REVIEW')
+    ),
+    rejection_reason TEXT,
+    normalized_quote_hash TEXT NOT NULL,
+    language_identity_hash TEXT NOT NULL,
+    duplicate_status TEXT NOT NULL DEFAULT 'NEW',
+    duplicate_of_candidate_id INTEGER REFERENCES multilingual_candidates(id),
+    imported_quote_id INTEGER REFERENCES quotes(id),
+    imported_at TEXT,
+    created_at TEXT NOT NULL,
+    CHECK (source_expression_end > source_expression_start),
+    CHECK (highlight_end > highlight_start),
+    CHECK (substr(quote, highlight_start + 1, highlight_end - highlight_start) = matched_text),
+    UNIQUE (
+        source_id, source_record_id, source_expression_start,
+        source_expression_end, parser_rule
+    )
+);
+
+CREATE INDEX IF NOT EXISTS multilingual_candidates_language_idx
+    ON multilingual_candidates(language, confidence_class, review_status);
+CREATE INDEX IF NOT EXISTS multilingual_candidates_minute_idx
+    ON multilingual_candidates(language, minute_of_day);
+CREATE INDEX IF NOT EXISTS multilingual_candidates_identity_idx
+    ON multilingual_candidates(language, language_identity_hash);
 
 CREATE TABLE IF NOT EXISTS import_issues (
     id INTEGER PRIMARY KEY,
@@ -727,6 +822,70 @@ CREATE TABLE IF NOT EXISTS wikisource_runs (
 );
 """
 
+LANGUAGE_OBJECTS = """
+DROP VIEW IF EXISTS quote_minute_pool;
+DROP TRIGGER IF EXISTS quotes_default_minute_eligibility;
+DROP TRIGGER IF EXISTS quotes_verified_minute_eligibility;
+
+CREATE TRIGGER quotes_default_minute_eligibility
+AFTER INSERT ON quotes
+WHEN NEW.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
+BEGIN
+    INSERT OR IGNORE INTO quote_time_semantics (
+        quote_id, language, matched_text, possible_minutes, semantic_confidence,
+        time_semantics, clockface_minute, narrative_resolution,
+        evidence_type, evidence_text, created_at, updated_at
+    ) VALUES (
+        NEW.id, NEW.language, NEW.time_text, printf('[%d]', NEW.minute_of_day), 'HIGH',
+        'RESOLVED_24H', NEW.minute_of_day % 720, 'RESOLVED',
+        'CANONICAL_MINUTE', NEW.time_24h, NEW.created_at, NEW.created_at
+    );
+    INSERT OR IGNORE INTO quote_minute_eligibility (
+        quote_id, language, minute_of_day, eligibility_type, confidence,
+        evidence_type, evidence_text, created_at
+    ) VALUES (
+        NEW.id, NEW.language, NEW.minute_of_day, 'EXACT_24H', 'VERIFIED',
+        'CANONICAL_MINUTE', NEW.time_24h, NEW.created_at
+    );
+END;
+
+CREATE TRIGGER quotes_verified_minute_eligibility
+AFTER UPDATE OF quality_status ON quotes
+WHEN NEW.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
+ AND OLD.quality_status NOT IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
+BEGIN
+    INSERT OR IGNORE INTO quote_time_semantics (
+        quote_id, language, matched_text, possible_minutes, semantic_confidence,
+        time_semantics, clockface_minute, narrative_resolution,
+        evidence_type, evidence_text, created_at, updated_at
+    ) VALUES (
+        NEW.id, NEW.language, NEW.time_text, printf('[%d]', NEW.minute_of_day), 'HIGH',
+        'RESOLVED_24H', NEW.minute_of_day % 720, 'RESOLVED',
+        'CANONICAL_MINUTE', NEW.time_24h, NEW.created_at, NEW.created_at
+    );
+    INSERT OR IGNORE INTO quote_minute_eligibility (
+        quote_id, language, minute_of_day, eligibility_type, confidence,
+        evidence_type, evidence_text, created_at
+    ) VALUES (
+        NEW.id, NEW.language, NEW.minute_of_day, 'EXACT_24H', 'VERIFIED',
+        'CANONICAL_MINUTE', NEW.time_24h, NEW.created_at
+    );
+END;
+
+CREATE VIEW quote_minute_pool AS
+SELECT quote_id, language, minute_of_day, eligibility_type, confidence, evidence_type,
+       evidence_text, source_candidate_type, source_candidate_id
+FROM quote_minute_eligibility
+UNION ALL
+SELECT q.id, q.language, q.minute_of_day, 'EXACT_24H', 'LEGACY_VERIFIED',
+       'LEGACY_CANONICAL_MINUTE', q.time_24h, NULL, NULL
+FROM quotes AS q
+WHERE q.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
+  AND NOT EXISTS (
+      SELECT 1 FROM quote_minute_eligibility AS e WHERE e.quote_id = q.id
+  );
+"""
+
 _MINED_CANDIDATE_MIGRATIONS = {
     "contextual_resolution": "TEXT",
     "resolved_minute_of_day": "INTEGER CHECK (resolved_minute_of_day BETWEEN 0 AND 1439)",
@@ -740,6 +899,67 @@ _MINED_CANDIDATE_MIGRATIONS = {
 
 _GUTENBERG_BOOK_MIGRATIONS = {
     "text_cached": "INTEGER NOT NULL DEFAULT 0 CHECK (text_cached IN (0, 1))",
+}
+
+_LANGUAGE_MIGRATIONS: dict[str, dict[str, str]] = {
+    "sources": {
+        "source_project": "TEXT NOT NULL DEFAULT 'legacy'",
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "script_variant": "TEXT",
+        "translator_editor": "TEXT",
+        "publication_metadata": "TEXT",
+        "rights_evidence": "TEXT",
+    },
+    "quotes": {
+        "script_variant": "TEXT",
+        "text_normalized_hash": "TEXT",
+        "language_identity_hash": "TEXT",
+    },
+    "quote_provenance": {
+        "raw_language": "TEXT NOT NULL DEFAULT 'en'",
+        "raw_script_variant": "TEXT",
+        "translator_editor": "TEXT",
+        "publication_metadata": "TEXT",
+        "rights_evidence": "TEXT",
+    },
+    "quote_time_semantics": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "matched_text": "TEXT",
+        "possible_minutes": "TEXT NOT NULL DEFAULT '[]'",
+        "semantic_confidence": "TEXT",
+    },
+    "quote_minute_eligibility": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+    },
+    "mined_candidates": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "possible_minutes": "TEXT NOT NULL DEFAULT '[]'",
+        "semantic_type": "TEXT",
+        "confidence_class": "TEXT",
+    },
+    "gutenberg_candidates": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "possible_minutes": "TEXT NOT NULL DEFAULT '[]'",
+        "semantic_type": "TEXT",
+        "confidence_class": "TEXT",
+    },
+    "wikisource_dumps": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "script_variant": "TEXT",
+    },
+    "wikisource_works": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "script_variant": "TEXT",
+        "translator_editor": "TEXT",
+        "publication_metadata": "TEXT",
+    },
+    "wikisource_candidates": {
+        "language": "TEXT NOT NULL DEFAULT 'en'",
+        "script_variant": "TEXT",
+        "possible_minutes": "TEXT NOT NULL DEFAULT '[]'",
+        "semantic_type_detail": "TEXT",
+        "confidence_class": "TEXT",
+    },
 }
 
 
@@ -767,6 +987,50 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     for name, declaration in _GUTENBERG_BOOK_MIGRATIONS.items():
         if name not in gutenberg_columns:
             connection.execute(f"ALTER TABLE gutenberg_books ADD COLUMN {name} {declaration}")
+    for table, migrations in _LANGUAGE_MIGRATIONS.items():
+        table_columns = {
+            str(row["name"]) for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        for name, declaration in migrations.items():
+            if name not in table_columns:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+    connection.execute(
+        "UPDATE quotes SET text_normalized_hash = normalized_quote_hash "
+        "WHERE text_normalized_hash IS NULL"
+    )
+    connection.execute(
+        "UPDATE quotes SET language_identity_hash = language || ':' || normalized_quote_hash "
+        "WHERE language_identity_hash IS NULL"
+    )
+    connection.execute(
+        """
+        UPDATE quote_time_semantics
+        SET language = (SELECT q.language FROM quotes AS q WHERE q.id = quote_id),
+            matched_text = COALESCE(
+                matched_text, (SELECT q.time_text FROM quotes AS q WHERE q.id = quote_id)
+            ),
+            possible_minutes = CASE
+                WHEN possible_minutes = '[]' THEN printf(
+                    '[%d]', (SELECT q.minute_of_day FROM quotes AS q WHERE q.id = quote_id)
+                )
+                ELSE possible_minutes
+            END,
+            semantic_confidence = COALESCE(semantic_confidence, 'HIGH')
+        """
+    )
+    connection.execute(
+        """
+        UPDATE quote_minute_eligibility
+        SET language = (SELECT q.language FROM quotes AS q WHERE q.id = quote_id)
+        """
+    )
+    connection.executescript(LANGUAGE_OBJECTS)
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS quotes_language_identity_idx
+        ON quotes(language, minute_of_day, text_normalized_hash)
+        """
+    )
     connection.commit()
 
 
@@ -776,10 +1040,12 @@ def backfill_primary_eligibility(connection: sqlite3.Connection) -> int:
     connection.execute(
         """
         INSERT OR IGNORE INTO quote_time_semantics (
-            quote_id, time_semantics, clockface_minute, narrative_resolution,
+            quote_id, language, matched_text, possible_minutes, semantic_confidence,
+            time_semantics, clockface_minute, narrative_resolution,
             evidence_type, evidence_text, created_at, updated_at
         )
-        SELECT id, 'RESOLVED_24H', minute_of_day % 720, 'RESOLVED',
+        SELECT id, language, time_text, printf('[%d]', minute_of_day), 'HIGH',
+               'RESOLVED_24H', minute_of_day % 720, 'RESOLVED',
                'CANONICAL_MINUTE', time_24h, created_at, created_at
         FROM quotes
         WHERE quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
@@ -788,10 +1054,10 @@ def backfill_primary_eligibility(connection: sqlite3.Connection) -> int:
     connection.execute(
         """
         INSERT OR IGNORE INTO quote_minute_eligibility (
-            quote_id, minute_of_day, eligibility_type, confidence,
+            quote_id, language, minute_of_day, eligibility_type, confidence,
             evidence_type, evidence_text, created_at
         )
-        SELECT id, minute_of_day, 'EXACT_24H', 'VERIFIED',
+        SELECT id, language, minute_of_day, 'EXACT_24H', 'VERIFIED',
                'CANONICAL_MINUTE', time_24h, created_at
         FROM quotes
         WHERE quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')

@@ -121,9 +121,16 @@ def _import_quote(
     highlight = locate_time_text(quote, time_text)
     exact_hash = text_hash(quote)
     normalized_hash = normalized_quote_hash(quote)
+    language_identity = f"{spec.language}:{normalized_hash}"
+    stored_normalized_hash = (
+        normalized_hash if spec.language.startswith("en") else text_hash(language_identity)
+    )
     existing = connection.execute(
-        "SELECT * FROM quotes WHERE minute_of_day = ? AND normalized_quote_hash = ?",
-        (minute_of_day, normalized_hash),
+        """
+        SELECT * FROM quotes
+        WHERE language = ? AND minute_of_day = ? AND text_normalized_hash = ?
+        """,
+        (spec.language, minute_of_day, normalized_hash),
     ).fetchone()
 
     sfw_db = _bool_db(raw.sfw)
@@ -133,8 +140,9 @@ def _import_quote(
             INSERT INTO quotes (
                 minute_of_day, time_24h, time_text, quote, title, author, sfw, language,
                 source_name, source_url, source_license, source_record_id, quote_hash,
-                normalized_quote_hash, highlight_start, highlight_end, quality_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                normalized_quote_hash, text_normalized_hash, language_identity_hash,
+                highlight_start, highlight_end, quality_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 minute_of_day,
@@ -144,12 +152,15 @@ def _import_quote(
                 title,
                 author,
                 sfw_db,
+                spec.language,
                 spec.name,
                 spec.url,
                 spec.license,
                 raw.source_record_id,
                 exact_hash,
+                stored_normalized_hash,
                 normalized_hash,
+                language_identity,
                 highlight.start,
                 highlight.end,
                 highlight.status.value,
@@ -205,9 +216,10 @@ def _import_quote(
         """
         INSERT INTO quote_provenance (
             quote_id, source_id, import_run_id, source_record_id, raw_time_24h, raw_time_text,
-            raw_quote, raw_title, raw_author, raw_sfw, raw_quote_hash, validation_status,
+            raw_quote, raw_title, raw_author, raw_sfw, raw_language,
+            raw_quote_hash, validation_status,
             highlight_start, highlight_end, duplicate_kind, raw_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             quote_id,
@@ -220,6 +232,7 @@ def _import_quote(
             raw.title,
             raw.author,
             sfw_db,
+            spec.language,
             text_hash(raw.quote),
             highlight.status.value,
             highlight.start,
@@ -254,15 +267,16 @@ def _build(connection: sqlite3.Connection, specs: list[SourceSpec]) -> ImportSum
         source_cursor = connection.execute(
             """
             INSERT INTO sources (
-                name, slug, source_url, source_license, upstream_commit, corpus_path,
+                name, slug, source_url, source_license, language, upstream_commit, corpus_path,
                 corpus_sha256, imported_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 spec.name,
                 spec.slug,
                 spec.url,
                 spec.license,
+                spec.language,
                 spec.commit,
                 str(spec.corpus_path),
                 actual_sha256,

@@ -54,6 +54,15 @@ class EligibilityType(StrEnum):
     CLOCKFACE_SHARED_PM = "CLOCKFACE_SHARED_PM"
 
 
+class CandidateConfidence(StrEnum):
+    """Review/import class used by language-specific corpus miners."""
+
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    AMBIGUOUS_CLOCKFACE = "AMBIGUOUS_CLOCKFACE"
+    REJECT = "REJECT"
+
+
 @dataclass(frozen=True, slots=True)
 class HighlightResult:
     status: QualityStatus
@@ -71,6 +80,15 @@ class TimeDetection:
     parser_rule: str
     ampm_evidence: str | None = None
     rejection_reason: str | None = None
+    language: str = "en"
+    possible_minutes: tuple[int, ...] = ()
+    semantic_type: str = ""
+    candidate_confidence: CandidateConfidence | None = None
+
+    @property
+    def matched_text(self) -> str:
+        """Alias used by the multilingual candidate schema."""
+        return self.text
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +122,7 @@ class SourceSpec:
     corpus_path: Path
     corpus_sha256: str
     format: str
+    language: str = "en"
     sfw_style: str | None = None
 
 

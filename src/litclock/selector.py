@@ -35,6 +35,7 @@ class QuoteSelector:
         book_cooldown: timedelta = timedelta(hours=12),
         author_cooldown: timedelta = timedelta(hours=6),
         exact_quote_cooldown: timedelta = timedelta(hours=24),
+        language: str = "en",
     ) -> None:
         self.connection = connection
         self.rng = rng or random.Random()
@@ -42,6 +43,7 @@ class QuoteSelector:
         self.book_cooldown = book_cooldown
         self.author_cooldown = author_cooldown
         self.exact_quote_cooldown = exact_quote_cooldown
+        self.language = language
 
     def _candidate_rows(self, minute: int, *, sfw_only: bool) -> list[sqlite3.Row]:
         sfw_clause = "AND sfw = 1" if sfw_only else ""
@@ -56,10 +58,11 @@ class QuoteSelector:
                 JOIN quotes AS q ON q.id = pool.quote_id
                 WHERE pool.minute_of_day = ?
                   AND q.quality_status IN (?, ?)
+                  AND (q.language = ? OR q.language LIKE ?)
                   {sfw_clause}
                 ORDER BY q.id
                 """,  # noqa: S608 - sfw_clause is an internal constant
-                (minute, *RENDERABLE_STATUSES),
+                (minute, *RENDERABLE_STATUSES, self.language, f"{self.language}-%"),
             )
         )
 
