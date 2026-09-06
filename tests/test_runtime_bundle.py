@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from litclock.bundle import _date_key, _generated_at, _possible_date_labels, minute_window
+from litclock.deploy import DeploymentError, deploy_bundle, rollback_bundle
+from litclock.runtime_bundle import (
+    BundleManifest,
+    BundleValidationError,
+    DateAssetRecord,
+    QuoteAssetRecord,
+    read_manifest,
+    sha256_file,
+    validate_manifest,
+    write_checksums,
+    write_manifest,
+)
+
+
+def _png(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("1", (8, 8), 1).save(path)
+
+
+def _bundle(root: Path, *, version: str = "test-v1", all_minutes: bool = True) -> BundleManifest:
+    frame = root / "frames/q1.png"
+    date = root / "dates/0-09-06.png"
+    _png(frame)
+    _png(date)
+    minutes = {minute: (1,) for minute in range(1440)} if all_minutes else {0: (1,)}
+    manifest = BundleManifest(
+        {
+            "format_version": "1",
+            "asset_set_version": version,
+            "complete": "1" if all_minutes else "0",
+            "renderer_preset": "pw4-v1",
+        },
+        minutes,
+        {
+            1: QuoteAssetRecord(
+                1,
+                "frames/q1.png",
+                "book",
+                "author",
+                sha256_file(frame),
+                frame.stat().st_size,
+                8,
+                8,
+            )
+        },
+        {
+            "0-09-06": DateAssetRecord(
+                "0-09-06",
+                "dates/0-09-06.png",
+                10,
+                20,
+                sha256_file(date),
+                date.stat().st_size,
+                8,
+                8,
+            )
+        },
+    )
+    write_manifest(root, manifest)
+    write_checksums(root, manifest)
+    return manifest
+
+
+def test_manifest_round_trip_requires_every_minute_and_preserves_shared_asset(
+    tmp_path: Path,
+) -> None:
+    manifest = _bundle(tmp_path)
+
+    loaded = read_manifest(tmp_path)
+    validate_manifest(loaded, root=tmp_path, verify_checksums=True)
+
+    assert loaded == manifest
+    assert len(loaded.minutes) == 1440
+    assert len(loaded.quotes) == 1
+    assert all(ids == (1,) for ids in loaded.minutes.values())
+
+
+def test_minute_window_and_date_assets_cross_midnight_without_timezone_rules() -> None:
+    labels = dict(_possible_date_labels())
+
+    assert minute_window(1438, 4) == (1438, 1439, 0, 1)
+    assert _date_key(date(2026, 9, 6)) == "0-09-06"
+    assert labels["0-09-06"] == "Sun, Sep 6"
+    assert labels["1-02-29"] == "Mon, Feb 29"
+
+
+def test_source_date_epoch_makes_bundle_timestamp_reproducible(monkeypatch) -> None:
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+
+    assert _generated_at() == "1970-01-01T00:00:00+00:00"
+
+
+def test_manifest_rejects_missing_asset_and_unreferenced_duplicate(tmp_path: Path) -> None:
+    manifest = _bundle(tmp_path, all_minutes=False)
+    extra = QuoteAssetRecord(2, "frames/q2.png", "b", "a", "0" * 64, 1)
+    broken = BundleManifest(
+        manifest.metadata,
+        manifest.minutes,
+        {**manifest.quotes, 2: extra},
+        manifest.dates,
+    )
+
+    with pytest.raises(BundleValidationError, match="unreferenced"):
+        validate_manifest(broken, root=tmp_path, require_all_minutes=False)
+
+
+def test_manifest_rejects_wrong_image_dimensions(tmp_path: Path) -> None:
+    manifest = _bundle(tmp_path, all_minutes=False)
+    record = manifest.quotes[1]
+    wrong = QuoteAssetRecord(
+        record.quote_id,
+        record.frame,
+        record.book_id,
+        record.author_id,
+        record.sha256,
+        record.byte_size,
+        1072,
+        1448,
+    )
+
+    with pytest.raises(BundleValidationError, match="wrong asset dimensions"):
+        validate_manifest(
+            BundleManifest(manifest.metadata, manifest.minutes, {1: wrong}, manifest.dates),
+            root=tmp_path,
+            require_all_minutes=False,
+        )
+
+
+def test_bundle_has_no_font_or_absolute_host_path(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+    text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (tmp_path / "bundle.meta", tmp_path / "minutes.tsv", tmp_path / "quotes.tsv")
+    )
+
+    assert "/Users/" not in text
+    assert not list(tmp_path.rglob("*.ttf"))
+    assert not list(tmp_path.rglob("*.otf"))
+
+
+def test_deploy_is_staged_and_rollback_swaps_version(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    _bundle(first, version="v1")
+    _bundle(second, version="v2")
+
+    assert deploy_bundle(first, mount, project, require_kindle=False) == "v1"
+    assert deploy_bundle(second, mount, project, require_kindle=False) == "v2"
+    runtime = mount / "literary-clock/runtime"
+    assert (runtime / "current").read_text().strip() == "v2"
+    assert (runtime / "previous").read_text().strip() == "v1"
+    assert rollback_bundle(mount, require_kindle=False) == "v1"
+    assert (runtime / "current").read_text().strip() == "v1"
+    assert (runtime / "previous").read_text().strip() == "v2"
+
+
+def test_deploy_refuses_partial_collision(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+
+    with pytest.raises(DeploymentError, match="already exists"):
+        deploy_bundle(source, mount, project, require_kindle=False)

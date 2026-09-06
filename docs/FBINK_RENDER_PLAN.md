@@ -1,7 +1,9 @@
-# Future FBInk Render Plan
+# FBInk Render Plan and Phase 4B Result
 
-Phase 3 stops at deterministic device-independent layout and bitmap generation. No Kindle has
-been connected, configured, mounted, jailbroken, or modified.
+This document originated as the Phase 3 boundary plan. Physical Phase 4 testing has now selected
+the bitmap approach and validated it on the target Kindle. The current implementation and bounded
+pilot results are documented in
+[`reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md`](reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md).
 
 The known target is a Kindle Paperwhite 4 / 10th Generation running firmware 5.17.1.0.3. Its
 panel is 1072 × 1448 at 300 ppi; the V1 clock orientation is native landscape, 1448 × 1072. The
@@ -10,10 +12,9 @@ portrait bitmap.
 
 ## Shared boundary
 
-The future device runner should consume the same validated `RenderQuote` and `LayoutResult` used
-by workstation previews. Quote selection remains a separate operation with the existing SQLite
-shuffle/history state. The runner should never reinterpret time text or calculate highlight
-offsets.
+The bundle builder consumes the same validated `RenderQuote` and layout contract used by
+workstation previews. The device runner receives only finished bitmaps and hashed selector
+identities; it never reinterprets time text or calculates highlight offsets.
 
 ## Option A — render a bitmap, display through FBInk/eips
 
@@ -57,32 +58,29 @@ Costs:
 - More positioned draw calls can create alignment artifacts and complicate partial/full refresh
   behavior.
 
-## Recommendation for the first device experiment
+## Implemented decision
 
-Start with Option A: render one native 1448 × 1072 thresholded 1-bit PNG and display it through
-FBInk/eips. It offers the smallest experiment that preserves the visual evidence from the
-PW4-landscape QA pass.
-Compare Option B only after the bitmap path works on the actual device and only if measured CPU,
-latency, storage, or dependency constraints justify a second composition path.
+Option A is implemented: the Mac builds deduplicated 1-bit quote assets and reusable date overlays,
+and a tiny Kindle shell runtime displays them through FBInk. The projected full deployment remains
+comfortably below available storage. Option B has no measured advantage that justifies a second
+layout engine.
 
 The anti-repeat state remains global and lives with selection, not image files. A normal tick is:
 
-1. derive the current local `HH:MM`;
-2. select once, persisting its per-minute shuffle bag and global display history;
-3. validate/build `RenderQuote`;
-4. render one temporary frame for the exact device profile;
-5. display it with the minimum correct refresh operation;
-6. replace or delete the previous temporary frame.
+1. capture one Kindle-local timestamp for date and minute;
+2. select from the manifest without committing state;
+3. validate the quote and date assets;
+4. display both through FBInk with one refresh;
+5. only after success, atomically commit shuffle/global history;
+6. return control to the scheduler/power lifecycle.
 
-## Information still required before Phase 4
+## Information still required before 24/7 activation
 
-- Effective full-screen viewport and rotation behavior after any system-reserved chrome.
-- Which serif font files and weights exist locally and may legally be used.
-- Whether the owner explicitly authorizes any later device access or launcher setup; Phase 3
-  assumes none.
-- Whether FBInk is installed and its version/build flags, or whether only `eips` is available.
-- Confirmed commands for full and partial refresh on that model.
-- Available Python/Pillow runtime, CPU/RAM constraints, and writable temporary directory.
+- A fullscreen framework state that permits powerd suspend on this firmware.
+- Measured battery cost of one-minute versus RTC-friendly three-minute-or-longer cadence.
+- Multi-hour GL16 ghosting evidence and the final periodic GC16 cadence.
+- Reboot/startup recovery behavior with missing or partially deployed assets.
+- Explicit authorization to enable a persistent scheduler and startup hook.
 
-No deployment route should be selected from model names alone; verify these facts on the device
-only after explicit authorization.
+No persistent deployment route should be selected from model names alone; validate these facts on
+the actual device before activation.

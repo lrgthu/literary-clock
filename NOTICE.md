@@ -130,3 +130,10 @@ metadata stored with each source and canonical quote. The curated Markdown copie
 `docs/reports/` remain corpus-derived and are provided for project review, not relicensed as MIT.
 
 No font binaries from any upstream repository are copied into this project.
+
+## KindleCron runtime dependency
+
+The bounded Phase 4B device pilot used the official KindleCron (`kron`) v0.2.0 release from
+<https://github.com/lennardollesch/KindleCron>. KindleCron is licensed upstream under the GNU Affero
+General Public License v3.0. Its standalone binary is a local device dependency and is not copied
+into or distributed by this repository. This project's MIT license does not apply to KindleCron.

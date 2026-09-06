@@ -26,11 +26,12 @@ dashboard, iconography, border, Kindle status bar, or decorative interface.
 
 Exact phase snapshots and renderer measurements are in [`docs/reports/`](docs/reports/).
 
-The renderer produces the frame on the host rather than typesetting on the Kindle. The bounded,
-reversible helpers in `kindle/` support physical fullscreen testing but do not schedule updates or
-install a persistent service. Weather, dashboards, clock icons, and other ambient-display features
-remain out of scope: the screen is a date marginal note, one quotation, its inline time phrase, and
-discreet literary attribution.
+The frozen renderer produces reusable quote frames on the build Mac rather than typesetting on the
+Kindle. A bounded Phase 4B pilot has also proved a tiny, offline Kindle-native selector: it reads
+the Kindle's local clock, chooses a pre-rendered frame, displays it with FBInk, and owns persistent
+history without a Mac or network. No persistent scheduler or boot hook is enabled yet. Weather,
+dashboards, clock icons, and other ambient-display features remain out of scope: the screen is a
+date marginal note, one quotation, its inline time phrase, and discreet literary attribution.
 
 ## Architecture
 
@@ -47,9 +48,13 @@ legacy corpora + Standard Ebooks + Project Gutenberg + English Wikisource
                               ↓
                     device renderability gate
                               ↓
-                       Pillow renderer
+              Pillow bundle builder (Mac, offline)
                               ↓
-                future Kindle FBInk/eips backend
+             TSV manifest + deduplicated 1-bit assets
+                              ↓
+       Kindle clock + shell selector + transactional history
+                              ↓
+                 FBInk display + RTC-aware scheduling
 ```
 
 The project is deliberately small and uses Python 3.11+, SQLite, PyYAML for the one authoritative
@@ -71,7 +76,12 @@ library everywhere else.
 - `src/litclock/render/pillow_renderer.py` produces deterministic grayscale and 1-bit PNG frames;
   selection logic is deliberately absent from the renderer.
 - `src/litclock/render/production.py` defines the fail-closed `pw4-v1` production contract used by
-  the future device runtime.
+  the bundle builder.
+- `src/litclock/bundle.py` pre-renders deduplicated quote frames and tiny reusable date overlays,
+  calculates storage projections, and writes the compact Kindle manifest.
+- `src/litclock/runtime_bundle.py` owns the line-oriented manifest and deployment-integrity rules.
+- `src/litclock/deploy.py` stages and validates a versioned bundle on USB-visible Kindle storage,
+  atomically activates it, and retains the previous version for rollback.
 - `src/litclock/render/profiles.py` contains proportional profiles for early Kindle, Paperwhite,
   Basic 11, Paperwhite 5/11, Oasis, explicit PW4 portrait/landscape, and custom dimensions.
 - `src/litclock/standard_ebooks.py` indexes Standard Ebooks on GitHub, performs resumable sparse
@@ -109,8 +119,9 @@ library everywhere else.
 - `data/local/` is ignored scratch space for future locally mined material.
 
 See [architecture](docs/architecture.md), [corpus design](docs/corpus.md),
-[renderer behavior](docs/renderer.md), and the [future Kindle plan](docs/FBINK_RENDER_PLAN.md) for
-focused design documentation.
+[renderer behavior](docs/renderer.md), [Kindle runtime helpers](kindle/README.md), and the
+[Phase 4B standalone runtime report](docs/reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md) for focused
+design documentation.
 
 The normalized `quotes` table has one canonical row per distinct literary passage. Textual meaning
 is recorded separately in `quote_time_semantics`, while `quote_minute_eligibility` maps that one
@@ -497,6 +508,60 @@ excerpt offsets, font families/sizes, line counts, attribution transformations,
 body/attribution/date bounds, occupancy, highlight wrapping, clipping, fallback-font use, output
 mode, and unsupported glyphs. It also emits a curated Phase 4A.3 date/time-font contact sheet.
 
+## Build the standalone PW4 asset bundle
+
+Phase 4B preserves the validated typography by pre-rendering it on the Mac. Each display-safe
+canonical quote has one 1072 × 1448 CCW transport PNG regardless of how many minute pools reference
+it. A compact TSV manifest maps all 1,440 local minutes to those quote IDs. Dynamic dates are tiny
+separate 1-bit overlays, so the runtime does not need Pillow and the bundle does not multiply every
+quote by every calendar date.
+
+The builder uses the frozen `pw4-v1` contract and fails if the locally configured Apple Chancery
+accent is unavailable:
+
+```bash
+export LITCLOCK_TIME_FONT='/local/path/to/Apple Chancery.ttf'
+
+# Render a bounded sample and estimate full deployment size.
+uv run litclock build-pw4-bundle \
+  --output data/generated/pw4-bundle-estimate \
+  --estimate-only --sample-size 200
+
+# Build every display-safe frame and all reusable date overlays.
+SOURCE_DATE_EPOCH=1788712440 uv run litclock build-pw4-bundle \
+  --output data/generated/pw4-v1-001
+```
+
+`SOURCE_DATE_EPOCH` makes the manifest timestamp reproducible. The bundle contains no font file,
+SQLite database, Python dependency, proprietary path, or duplicate image for shared AM/PM
+relationships. Generated assets are ignored because quotations retain their separate source
+licenses.
+
+Deploying is a separate, non-scheduling operation:
+
+```bash
+uv run python scripts/deploy_pw4_bundle.py \
+  --mount /Volumes/Kindle \
+  --bundle data/generated/pw4-v1-001
+
+uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --rollback
+```
+
+The deployer verifies source and copied assets, available storage, dimensions, crisp 1-bit mode,
+and SHA-256 values before atomically switching the `current` version pointer. The Kindle runtime
+uses POSIX shell, BusyBox, FBInk, and an optional official KindleCron binary; it captures epoch,
+calendar date, and minute in one local `date` call and contains no timezone database. History is
+committed only after FBInk returns success.
+
+The bounded pilot changed frames autonomously across eight consecutive local minutes and followed
+a user-initiated one-hour Kindle timezone change without a Mac, network, configuration change, or
+replay of missed minutes. It did **not** establish production battery behavior: on the tested
+firmware, the temporary fullscreen/`preventScreenSaver` configuration remained `active`, so the
+deep-sleep-compatible 24/7 lifecycle and boot persistence are intentionally not enabled. See
+[`kindle/README.md`](kindle/README.md) for recovery commands and
+[`PHASE4B_STANDALONE_RUNTIME_REPORT.md`](docs/reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md) for the
+measurements and boundary.
+
 ## Development
 
 ```bash
@@ -518,5 +583,7 @@ virtual environment, caches, and local scratch corpus are ignored rather than co
 - Phase 2D — targeted retained-candidate recovery and official English Wikisource dump mining for
   the below-three sparse tail, stopping automatic imports as each pool reaches three.
 - Phase 3 — device-independent literary page layout, bitmap rendering, and visual QA.
-- Phase 4 — explicitly authorized on-device FBInk/eips backend experiment for the exact Kindle.
-- Phase 5 — Kindle deployment and operational refresh integration.
+- Phase 4A — physical PW4 renderer validation and frozen production typography.
+- Phase 4B.1 — bounded offline Kindle runtime pilot, transactional history, and local-time test.
+- Phase 4B.2 — pending explicitly authorized long-duration power, deep-sleep, ghosting, reboot, and
+  24/7 lifecycle validation.

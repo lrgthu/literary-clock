@@ -27,6 +27,8 @@ MIT license.
 - `generated/litclock.sqlite3`: operational normalized corpus and selector state.
 - Coverage JSON/CSV, candidate audits, review queues, and mining statistics.
 - `generated/render_previews/`: grayscale/1-bit frames and contact sheets.
+- `generated/pw4-*` and `generated/phase4b-*`: storage samples, versioned Kindle asset bundles,
+  downloaded local scheduler releases, and physical-pilot evidence.
 - `local/`: database snapshots, failed-run recovery files, and experiments.
 
 Human-readable phase reports are copied to `docs/reports/` as curated snapshots. Large
@@ -57,3 +59,14 @@ uv run litclock render-qa
 
 This regenerates the ignored local previews and reports. Do not add them to Git; update the
 curated Markdown snapshot in `docs/reports/` deliberately after reviewing it.
+
+Standalone Kindle bundles also require the frozen local production accent font:
+
+```bash
+export LITCLOCK_TIME_FONT='/local/path/to/Apple Chancery.ttf'
+uv run litclock build-pw4-bundle \
+  --output data/generated/pw4-v1-001
+```
+
+The resulting frame assets contain literary quotations and stay ignored. Only the builder,
+manifest format, runtime, deployment tools, tests, and sanitized aggregate report are published.

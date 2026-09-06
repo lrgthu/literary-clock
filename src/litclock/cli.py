@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -10,6 +11,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
+from litclock.bundle import build_pw4_bundle, minute_window
 from litclock.db import connect_database, initialize_database
 from litclock.gutenberg import acquire_catalog
 from litclock.gutenberg_mining import (
@@ -290,6 +292,28 @@ def build_parser() -> argparse.ArgumentParser:
         attribution_style=PW4_V1_RENDER_CONFIG.attribution_style.value,
         time_emphasis=PW4_V1_RENDER_CONFIG.time_emphasis.value,
         show_date=PW4_V1_RENDER_CONFIG.show_date,
+    )
+
+    bundle_parser = commands.add_parser(
+        "build-pw4-bundle",
+        help="build or estimate a standalone Kindle bundle through the frozen PW4 contract",
+    )
+    _database_argument(bundle_parser)
+    bundle_parser.add_argument("--output", type=Path, required=True)
+    bundle_parser.add_argument(
+        "--estimate-only",
+        action="store_true",
+        help="render a bounded sample and project storage without building the bundle",
+    )
+    bundle_parser.add_argument("--sample-size", type=int, default=100)
+    bundle_parser.add_argument(
+        "--pilot-start",
+        help="first local HH:MM in a consecutive pilot window",
+    )
+    bundle_parser.add_argument("--pilot-count", type=int, default=15)
+    bundle_parser.add_argument(
+        "--pilot-date",
+        help="generate only this ISO date overlay for a small pilot",
     )
 
     mine_parser = commands.add_parser(
@@ -639,6 +663,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(f"Frame: {image_path}")
             print(f"Metadata: {metadata_path}")
+        elif args.command == "build-pw4-bundle":
+            selected_minutes = None
+            if args.pilot_start:
+                from litclock.normalize import parse_time_24h
+
+                start, _ = parse_time_24h(args.pilot_start)
+                selected_minutes = minute_window(start, args.pilot_count)
+            elif args.pilot_date:
+                raise ValueError("--pilot-date requires --pilot-start")
+            connection = connect_database(args.db)
+            try:
+                summary = build_pw4_bundle(
+                    connection,
+                    args.output,
+                    minutes=selected_minutes,
+                    estimate_only=args.estimate_only,
+                    sample_size=args.sample_size,
+                    pilot_date=(
+                        parse_date_override(args.pilot_date)
+                        if args.pilot_date
+                        else (current_local_date() if selected_minutes else None)
+                    ),
+                )
+            finally:
+                connection.close()
+            print(json.dumps(summary.as_dict(), indent=2))
         elif args.command == "render-qa":
             connection = connect_database(args.db)
             try:

@@ -52,8 +52,24 @@ selection continues within the same minute's display-safe pool.
 
 `LayoutEngine` uses actual font metrics for highlight-aware wrapping and attribution ellipsis.
 `PillowRenderer` consumes the resulting geometry and emits deterministic grayscale or 1-bit PNGs.
-The future Kindle backend begins after this boundary and is documented in
-[`FBINK_RENDER_PLAN.md`](FBINK_RENDER_PLAN.md).
+
+## Standalone Kindle runtime layer
+
+Phase 4B keeps the frozen Pillow layout on the Mac build side and deploys one deduplicated 1-bit
+bitmap per display-safe canonical quote. A compact TSV manifest maps each minute to quote IDs and
+each quote ID to a bitmap plus hashed book/author identities. Separate tiny pre-rendered date
+overlays avoid both Kindle-side typesetting and quote-by-date asset multiplication.
+
+The Kindle runtime is POSIX shell plus BusyBox and FBInk. It captures local epoch, date, minute, and
+date key in one `date` call, so Kindle local time is the only clock and timezone authority. It uses
+per-minute shuffle bags and bounded global history, draws the bitmap, and commits state atomically
+only after FBInk succeeds. The Mac and network are absent from this path.
+
+The finite pilot used KindleCron's RTC-aware scheduler directly from user storage. No boot hook or
+permanent daemon has been enabled. A deep-sleep-compatible fullscreen lifecycle remains a Phase 4B
+deployment question; the bounded framework-suspension technique keeps this firmware active and is
+not accepted as the final power architecture. See [`../kindle/README.md`](../kindle/README.md) and
+the [Phase 4B report](reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md).
 
 ## Repository and local data boundary
 
