@@ -652,8 +652,14 @@ class LayoutEngine:
                 highlight_size=emphasis.font_size,
                 time_selection=self.time_font,
                 date_size=max(
-                    profile.minimum_date_size,
-                    min(attribution_size - 1, round(attribution_size * profile.date_scale)),
+                    10,
+                    min(
+                        attribution_size - 1,
+                        max(
+                            profile.minimum_date_size,
+                            round(attribution_size * profile.date_scale),
+                        ),
+                    ),
                 ),
             )
             raw_lines = _wrap_body(quote, fonts, max_width, emphasis)
