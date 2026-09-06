@@ -47,9 +47,10 @@ from litclock.render.date_label import current_local_date, parse_date_override
 from litclock.render.models import AttributionStyle, DitherMode, RenderMode, TimeEmphasis
 from litclock.render.pillow_renderer import PillowRenderer
 from litclock.render.preview import load_quote_by_id, run_render_qa, save_rendered_frame
+from litclock.render.production import PW4_V1_RENDER_CONFIG, resolve_production_fonts
 from litclock.render.profiles import get_device_profile
 from litclock.render.suitability import is_renderable_for_device
-from litclock.render.typography import discover_font, discover_time_font
+from litclock.render.typography import FontSelection, discover_font, discover_time_font
 from litclock.selector import NoQuoteAvailable, QuoteSelector
 from litclock.stats import calculate_stats, write_reports
 from litclock.wikisource import acquire_dump
@@ -257,6 +258,40 @@ def build_parser() -> argparse.ArgumentParser:
         default=TimeEmphasis.SUBTLE_LIFT.value,
     )
 
+    production_parser = commands.add_parser(
+        "render-pw4-v1",
+        help="render through the frozen, fail-closed PW4 landscape production contract",
+    )
+    production_parser.add_argument(
+        "time",
+        nargs="?",
+        help="24-hour display time; defaults to the current local minute",
+    )
+    _database_argument(production_parser)
+    production_parser.add_argument("--output", type=Path, help="destination PNG path")
+    production_parser.add_argument("--seed", type=int, help="deterministic selector RNG seed")
+    production_parser.add_argument("--sfw-only", action="store_true")
+    production_parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="do not mutate shuffle state or display history",
+    )
+    production_parser.add_argument(
+        "--date",
+        help="deterministic local date override in YYYY-MM-DD form",
+    )
+    production_parser.set_defaults(
+        device="pw4",
+        orientation="landscape",
+        width=None,
+        height=None,
+        mode=PW4_V1_RENDER_CONFIG.mode.value,
+        dither=PW4_V1_RENDER_CONFIG.dither.value,
+        attribution_style=PW4_V1_RENDER_CONFIG.attribution_style.value,
+        time_emphasis=PW4_V1_RENDER_CONFIG.time_emphasis.value,
+        show_date=PW4_V1_RENDER_CONFIG.show_date,
+    )
+
     mine_parser = commands.add_parser(
         "mine-standard-ebooks", help="acquire and mine a bounded Standard Ebooks sample"
     )
@@ -452,6 +487,9 @@ def _render_quote(
     *,
     time_24h: str | None = None,
     quote_id: int | None = None,
+    font_override: FontSelection | None = None,
+    time_font_override: FontSelection | None = None,
+    production_preset: str | None = None,
 ) -> tuple[Path, Path]:
     profile = get_device_profile(
         args.device,
@@ -459,8 +497,8 @@ def _render_quote(
         height=args.height,
         orientation=args.orientation,
     )
-    font = _font_selection(args)
-    time_font = _time_font_selection(args)
+    font = font_override or _font_selection(args)
+    time_font = time_font_override or _time_font_selection(args)
     show_date = profile.show_date_by_default if args.show_date is None else args.show_date
     if args.date and args.show_date is False:
         raise ValueError("--date cannot be combined with --hide-date")
@@ -537,6 +575,7 @@ def _render_quote(
         time_emphasis=TimeEmphasis(args.time_emphasis),
         show_date=show_date,
         display_date=display_date,
+        production_preset=production_preset,
     )
     return image_path, metadata_path
 
@@ -587,6 +626,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Metadata: {metadata_path}")
         elif args.command == "render-id":
             image_path, metadata_path = _render_quote(args, quote_id=args.quote_id)
+            print(f"Frame: {image_path}")
+            print(f"Metadata: {metadata_path}")
+        elif args.command == "render-pw4-v1":
+            body_font, time_font = resolve_production_fonts()
+            image_path, metadata_path = _render_quote(
+                args,
+                time_24h=args.time or current_hhmm(),
+                font_override=body_font,
+                time_font_override=time_font,
+                production_preset=PW4_V1_RENDER_CONFIG.name,
+            )
             print(f"Frame: {image_path}")
             print(f"Metadata: {metadata_path}")
         elif args.command == "render-qa":

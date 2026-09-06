@@ -16,9 +16,10 @@ is drawn.
 PW4 landscape shows a renderer-owned short date by default: `Sat, Sep 5`. Formatting uses fixed
 English three-letter weekday/month names and an unpadded day, with no year or clock time. It sits
 at 5% of frame width/height (72, 54 px on PW4), independent from the optically centered quote.
-The physically selected PW4 scale produces a typical 29–32 px label, still no larger than the
-attribution. Diagnostics record its exact text, font size, bounding box, clipping, and collision
-state. Other device profiles default off;
+The physically selected PW4 scale produces a typical 29–32 px label. Sizing explicitly caps it at
+one pixel below the selected attribution size, preserving the quote → attribution → date hierarchy
+across Georgia on macOS and DejaVu Serif in Linux CI. Diagnostics record its exact text, font size,
+bounding box, clipping, and collision state. Other device profiles default off;
 the CLI offers `--show-date`, `--hide-date`, and deterministic `--date YYYY-MM-DD`.
 
 ## Layout policy
@@ -41,7 +42,29 @@ Normal line spacing is 1.05 rather than the earlier 1.16.
 Every body-size candidate is evaluated with the matching attribution font and its complete
 vertical budget. If body plus gap plus attribution is too tall, the engine tries the next smaller
 readable full-quote size before compact geometry or excerpting. The ten-line, minimum-size,
-three-line attribution, and clipping limits remain hard constraints.
+three-line attribution, and clipping limits remain hard constraints. The detached date is tested
+against the proposed body using two-dimensional rectangles; vertical ranges may overlap when the
+date and body are genuinely separated horizontally.
+
+## Frozen PW4 V1 production contract
+
+`PW4_V1_RENDER_CONFIG` and `uv run litclock render-pw4-v1` are the single production rendering
+path for the later device runtime. The contract fixes `pw4_landscape`, date on, `picturesque`,
+book/author attribution, 1-bit output, and threshold conversion. It also explicitly states that
+the rendered page has no standalone clock or system UI.
+
+The body family is resolved specifically as Georgia rather than using generic family preference.
+The Apple Chancery accent is configured locally and never distributed:
+
+```bash
+export LITCLOCK_TIME_FONT='/local/path/to/Apple Chancery.ttf'
+uv run litclock render-pw4-v1 16:37 --preview --output /tmp/litclock-frame.png
+```
+
+The preset checks the font's embedded family name and fails if the variable is absent, the file is
+unloadable, or the configured face is not Apple Chancery. It never falls back while claiming the
+frozen visual design. Generic renderer commands deliberately remain portable and keep their prior
+subtle-lift/body-family defaults.
 
 ## Full text and excerpt fallback
 

@@ -36,6 +36,25 @@ class LayoutError(RuntimeError):
         self.code = code
 
 
+def rectangles_intersect(first: Rectangle, second: Rectangle) -> bool:
+    """Return whether two non-empty layout rectangles overlap in both dimensions."""
+    return not (
+        first.right <= second.left
+        or first.left >= second.right
+        or first.bottom <= second.top
+        or first.top >= second.bottom
+    )
+
+
+def date_font_size(profile: DeviceProfile, attribution_size: int) -> int:
+    """Keep the renderer-owned date readable but strictly below attribution size."""
+    desired = max(
+        profile.minimum_date_size,
+        round(attribution_size * profile.date_scale),
+    )
+    return max(1, min(attribution_size - 1, desired))
+
+
 @dataclass(frozen=True, slots=True)
 class _RawLine:
     start: int
@@ -635,6 +654,7 @@ class LayoutEngine:
         ) = None
         hard_candidate = None
         composition_too_tall = False
+        date_collision_seen = False
         for body_size in range(starting_size, profile.minimum_body_size - 1, -1):
             attribution_size = max(
                 profile.minimum_attribution_size,
@@ -651,16 +671,7 @@ class LayoutEngine:
                 attribution_size,
                 highlight_size=emphasis.font_size,
                 time_selection=self.time_font,
-                date_size=max(
-                    10,
-                    min(
-                        attribution_size - 1,
-                        max(
-                            profile.minimum_date_size,
-                            round(attribution_size * profile.date_scale),
-                        ),
-                    ),
-                ),
+                date_size=date_font_size(profile, attribution_size),
             )
             raw_lines = _wrap_body(quote, fonts, max_width, emphasis)
             if not raw_lines:
@@ -714,10 +725,47 @@ class LayoutEngine:
                     (available_height - body_height - gap - attribution_height) * 0.46
                 )
                 if date_text:
+                    candidate_right = quote_left
+                    for line_index, raw_line in enumerate(raw_lines):
+                        is_paragraph_end = (
+                            line_index == len(raw_lines) - 1
+                            or raw_lines[line_index + 1].paragraph_index != raw_line.paragraph_index
+                        )
+                        justify_to_width = (
+                            max_width if profile.justify_body and not is_paragraph_end else None
+                        )
+                        segments = _segments_for_line(
+                            quote,
+                            raw_line,
+                            quote_left,
+                            fonts,
+                            emphasis,
+                            justify_to_width,
+                            body_size * profile.maximum_word_space_scale,
+                        )
+                        candidate_right = max(
+                            candidate_right,
+                            *(
+                                segment.x + segment.width + segment.stroke_width
+                                for segment in segments
+                            ),
+                        )
+                    candidate_body_bbox = Rectangle(
+                        math.floor(quote_left),
+                        math.floor(candidate_top),
+                        math.ceil(candidate_right),
+                        math.ceil(candidate_top + body_height),
+                    )
+                    date_x = round(profile.width * profile.date_inset_x)
                     date_y = round(profile.height * profile.date_inset_y)
-                    date_bottom = date_y + line_height(fonts.date_regular, spacing=1.0)
-                    if date_bottom >= candidate_top:
-                        composition_too_tall = True
+                    candidate_date_bbox = Rectangle(
+                        date_x,
+                        date_y,
+                        math.ceil(date_x + text_width(fonts.date_regular, date_text)),
+                        date_y + line_height(fonts.date_regular, spacing=1.0),
+                    )
+                    if rectangles_intersect(candidate_date_bbox, candidate_body_bbox):
+                        date_collision_seen = True
                         continue
                 candidate = (
                     body_size,
@@ -735,6 +783,11 @@ class LayoutEngine:
         if chosen is None:
             chosen = hard_candidate
         if chosen is None:
+            if date_collision_seen:
+                raise LayoutError(
+                    f"quote {quote.quote_id} collides with the date at every readable size",
+                    code="layout",
+                )
             if composition_too_tall:
                 raise LayoutError(
                     f"quote {quote.quote_id} and its attribution exceed the vertical safe "
@@ -904,15 +957,7 @@ class LayoutEngine:
             if date_label
             else None
         )
-        date_collision = bool(
-            date_bbox
-            and not (
-                date_bbox.right <= body_bbox.left
-                or date_bbox.left >= body_bbox.right
-                or date_bbox.bottom <= body_bbox.top
-                or date_bbox.top >= body_bbox.bottom
-            )
-        )
+        date_collision = bool(date_bbox and rectangles_intersect(date_bbox, body_bbox))
         if date_bbox:
             clipping = clipping or (
                 date_bbox.left < 0

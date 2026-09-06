@@ -65,9 +65,10 @@ Attribution positioning changes display layout only. No corpus semantics, canoni
 selection behavior changed.
 
 Apple Chancery is a proprietary system font available on the production Mac. The repository does
-not distribute it or hardcode its machine-specific path. Production rendering supplies it with
-`--time-font PATH --time-emphasis picturesque`. Environments without that face must provide an
-appropriate locally licensed accent or deliberately use the portable body-family fallback.
+not distribute it or hardcode its machine-specific path. The follow-up production cleanup added
+the authoritative `render-pw4-v1` command, which reads `LITCLOCK_TIME_FONT` and fails closed unless
+the configured file identifies as Apple Chancery. Generic rendering can still deliberately use a
+portable body-family fallback, but the production preset cannot silently downgrade.
 
 ## Device method
 
@@ -95,3 +96,6 @@ third-party literary text.
 - Deterministic QA: 32 / 32 frames; clipping/layout failures: 0 / 0.
 
 **The V1 visual layer is frozen and ready for Phase 4B.**
+
+The cross-platform CI sizing regression and formal production boundary are documented in
+`PHASE4A4_1_PRODUCTION_CLEANUP_REPORT.md`.

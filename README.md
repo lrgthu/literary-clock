@@ -70,6 +70,8 @@ library everywhere else.
   metrics and proportional optical composition.
 - `src/litclock/render/pillow_renderer.py` produces deterministic grayscale and 1-bit PNG frames;
   selection logic is deliberately absent from the renderer.
+- `src/litclock/render/production.py` defines the fail-closed `pw4-v1` production contract used by
+  the future device runtime.
 - `src/litclock/render/profiles.py` contains proportional profiles for early Kindle, Paperwhite,
   Basic 11, Paperwhite 5/11, Oasis, explicit PW4 portrait/landscape, and custom dimensions.
 - `src/litclock/standard_ebooks.py` indexes Standard Ebooks on GitHub, performs resumable sparse
@@ -387,7 +389,25 @@ relaxing these preferences when a minute has no alternative.
 Pillow is the bitmap backend. It discovers a supported local serif family (EB Garamond, Linux
 Libertine, Georgia, DejaVu Serif, or Liberation Serif, in preference order) and records the exact
 paths and face availability in each JSON metadata sidecar. Font files are never copied into this
-repository. For a production-quality explicit family, pass all four faces:
+repository.
+
+The physically approved PW4 V1 path is one authoritative command. It fixes the landscape profile,
+renderer-owned date, picturesque emphasis, book/author attribution, and crisp 1-bit threshold
+output. Georgia is resolved by family name. Apple Chancery remains a local proprietary font and
+must be supplied through the environment; a missing file or wrong embedded family fails closed.
+
+```bash
+export LITCLOCK_TIME_FONT='/local/path/to/Apple Chancery.ttf'
+uv run litclock render-pw4-v1 16:37 --preview --output /tmp/litclock-frame.png
+# Omit 16:37 to use the current local minute.
+```
+
+No absolute font path or font binary is stored in the repository. `--preview` makes selection
+non-mutating for QA; without it, the normal persistent anti-repeat history applies. The generated
+JSON sidecar records `production_preset: pw4-v1`. Generic `render`, `render-now`, and `render-id`
+remain configurable and retain their existing portable defaults.
+
+For a production-quality generic explicit family, pass all four faces:
 
 ```bash
 uv run litclock render 15:46 --device pw4 --orientation landscape --preview \
@@ -442,7 +462,10 @@ separate digital time.
 PW4 landscape shows the date by default as locale-independent English text such as
 `Sat, Sep 5`. `--date YYYY-MM-DD` makes preview output reproducible; `--show-date` and
 `--hide-date` explicitly control it. Other profiles keep the label off unless requested. The date
-source is independent from quote selection and contains no clock time or Kindle system UI.
+source is independent from quote selection and contains no clock time or Kindle system UI. Its
+size is computed from the selected attribution size and is always at least one pixel smaller. The
+layout candidate gate uses real two-dimensional date/body rectangles, so vertical overlap alone
+does not unnecessarily shrink or excerpt a horizontally separate quote.
 
 Physical PW4 comparison selected Georgia for body and attribution, a locally installed Apple
 Chancery face for the time phrase, and `picturesque` emphasis. The highlighted characters use a

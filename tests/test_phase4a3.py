@@ -82,6 +82,7 @@ def test_landscape_date_is_quiet_and_does_not_collide(body_font) -> None:
     assert 45 <= diagnostics.date_bbox.top <= 75
     assert diagnostics.date_bbox.bottom < diagnostics.body_bbox.top
     assert diagnostics.date_font_size < diagnostics.attribution_font_size
+    assert diagnostics.date_font_size >= profile.minimum_date_size
     assert not diagnostics.date_collision
     assert not diagnostics.clipping
 

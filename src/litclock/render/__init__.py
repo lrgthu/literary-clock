@@ -12,6 +12,7 @@ from litclock.render.models import (
     TimeEmphasis,
 )
 from litclock.render.pillow_renderer import PillowRenderer
+from litclock.render.production import PW4_V1_RENDER_CONFIG, ProductionRenderConfig
 from litclock.render.profiles import DeviceProfile, get_device_profile
 
 __all__ = [
@@ -20,6 +21,8 @@ __all__ = [
     "DitherMode",
     "DirtyRecordStatus",
     "PillowRenderer",
+    "PW4_V1_RENDER_CONFIG",
+    "ProductionRenderConfig",
     "RenderMode",
     "RenderQuote",
     "RenderabilityStatus",

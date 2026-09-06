@@ -93,6 +93,7 @@ def save_rendered_frame(
     time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
     show_date: bool | None = None,
     display_date: date | None = None,
+    production_preset: str | None = None,
 ) -> tuple[Path, Path, dict[str, Any]]:
     frame = renderer.render(
         quote,
@@ -126,6 +127,8 @@ def save_rendered_frame(
         "time_font_family": (renderer.time_font or renderer.font).family,
         "diagnostics": frame.diagnostics.as_dict(),
     }
+    if production_preset is not None:
+        metadata["production_preset"] = production_preset
     metadata_path = output.with_suffix(".json")
     metadata_path.write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

@@ -127,7 +127,7 @@ BUILTIN_PROFILES: dict[str, DeviceProfile] = {
         pixel_density_ppi=300,
         show_date_by_default=True,
         date_scale=0.96,
-        minimum_date_scale=0.020,
+        minimum_date_scale=0.018,
         date_inset_x=0.05,
         date_inset_y=0.05,
     ),

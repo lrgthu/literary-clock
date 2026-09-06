@@ -212,16 +212,47 @@ def discover_font(
         return discover_font(env_path)
 
     for family in _SYSTEM_FAMILIES:
-        name, *filenames = family
-        paths = tuple(_find_filename(filename) for filename in filenames)
-        if all(path is not None for path in paths):
-            regular, bold, italic, bold_italic = paths
-            assert regular and bold and italic and bold_italic
-            return FontSelection(name, regular, bold, italic, bold_italic)
+        try:
+            return discover_font_family(family[0])
+        except FontNotFoundError:
+            continue
     raise FontNotFoundError(
         "no supported serif family was found; configure all four explicit face paths or use "
         "the documented single-face --font fallback"
     )
+
+
+def discover_font_family(family_name: str) -> FontSelection:
+    """Discover one supported serif family by its stable family name.
+
+    Unlike :func:`discover_font`, this never falls through to another family. It is
+    intended for named production contracts whose typography must fail closed.
+    """
+    family = next(
+        (
+            candidate
+            for candidate in _SYSTEM_FAMILIES
+            if candidate[0].casefold() == family_name.casefold()
+        ),
+        None,
+    )
+    if family is None:
+        supported = ", ".join(candidate[0] for candidate in _SYSTEM_FAMILIES)
+        raise FontNotFoundError(
+            f"unsupported serif family {family_name!r}; supported families: {supported}"
+        )
+    name, *filenames = family
+    paths = tuple(_find_filename(filename) for filename in filenames)
+    if not all(path is not None for path in paths):
+        missing = [
+            filename for filename, path in zip(filenames, paths, strict=True) if path is None
+        ]
+        raise FontNotFoundError(
+            f"required {name} production family is unavailable; missing: {', '.join(missing)}"
+        )
+    regular, bold, italic, bold_italic = paths
+    assert regular and bold and italic and bold_italic
+    return FontSelection(name, regular, bold, italic, bold_italic)
 
 
 def discover_time_font(
