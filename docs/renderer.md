@@ -6,11 +6,19 @@ The primary profile is Kindle Paperwhite 4 / 10th Generation in native **1448 ×
 300 ppi**. Portrait is supported separately; landscape is not produced by rotating a portrait
 bitmap.
 
-The page contains only a literary quotation and quiet attribution. Body text is a classic serif,
-left aligned inside an optically centered wide block. In grayscale, ordinary text is about 70–80%
-visual black, while the inline time phrase uses the same face in bold/full black. The book title is
-smaller and italic; the normalized author/editor line is smaller regular serif. No standalone
-clock, date, weather, icons, border, or interface chrome is drawn.
+The page contains a quiet date marginal note, one literary quotation, and attribution. Body text
+is a classic serif, left aligned inside an optically centered wide block. In grayscale, ordinary
+text is about 70–80% visual black, while the inline time phrase is bold/full black and may use a
+second family. The book title is smaller and italic; the normalized author/editor line is smaller
+regular serif. No standalone clock, weather, icons, border, Kindle status bar, or interface chrome
+is drawn.
+
+PW4 landscape shows a renderer-owned short date by default: `Sat, Sep 5`. Formatting uses fixed
+English three-letter weekday/month names and an unpadded day, with no year or clock time. It sits
+at 5% of frame width/height (72, 54 px on PW4), independent from the optically centered quote.
+Typical QA size is 22–24 px, smaller and quieter than attribution. Diagnostics record its exact
+text, font size, bounding box, clipping, and collision state. Other device profiles default off;
+the CLI offers `--show-date`, `--hide-date`, and deterministic `--date YYYY-MM-DD`.
 
 ## Layout policy
 
@@ -19,10 +27,12 @@ PW4 landscape uses 123 px horizontal and 96 px vertical safe margins. The normal
 38 px minimum. Three to seven lines are preferred, eight is the soft maximum, and ten is the hard
 maximum. Text never shrinks below the readable minimum merely to avoid clipping.
 
-Wrapping uses actual regular/bold font metrics. A highlighted phrase stays together when it fits
-cleanly; otherwise it can wrap without losing or altering any source character. Quote and
-attribution are composed as one optically centered unit, with the landscape attribution shifted
-slightly right while remaining attached to the quote.
+Wrapping uses the actual body and time-font metrics. A highlighted phrase stays together when it
+fits cleanly; otherwise it can wrap without losing or altering any source character. The time
+face's width, ascent, descent, scaled size, and raised baseline participate in line geometry before
+drawing. Quote and attribution are composed as one optically centered unit, with the landscape
+attribution shifted slightly right while remaining attached to the quote; the detached date does
+not push that composition downward.
 
 Every body-size candidate is evaluated with the matching attribution font and its complete
 vertical budget. If body plus gap plus attribution is too tall, the engine tries the next smaller
@@ -70,6 +80,18 @@ a warning, records unavailable bold/italic faces in diagnostics, and uses the re
 therefore it is unsuitable when the final visual hierarchy matters. `LITCLOCK_FONT` has the same
 single-face behavior. No font binaries are distributed by this repository.
 
+An optional accent family for the literary time phrase is configured with
+`--time-font-regular PATH --time-font-bold PATH`. Both are required; the supplied bold face is
+validated. `--time-font PATH` uses only that exact file and reports whether it is truly bold. A
+missing or unloadable explicit face fails clearly. With no accent option, the body family's bold
+face remains the time face, preserving prior rendering. The existing `classic`, `subtle-lift`, and
+`expressive` treatments apply to whichever time family is selected.
+
+Local 1-bit QA compared Georgia/Georgia, Georgia/Arial, and Georgia/Times New Roman. Arial Bold with
+`subtle-lift` is the V1 physical-test recommendation: it creates a clear but restrained serif/sans
+contrast without digital or novelty styling. Times New Roman is a useful conservative alternative
+but is less distinct from Georgia. These are local system fonts only; none are redistributed.
+
 Built-in Paperwhite profiles distinguish `paperwhite-1-2` (758 × 1024 at 212 ppi),
 `paperwhite-3` (1072 × 1448 at 300 ppi), PW4 portrait/landscape, and `paperwhite-5`. The historical
 CLI alias `paperwhite-1-3` resolves to `paperwhite-1-2` for compatibility; it no longer implies that
@@ -88,8 +110,10 @@ quote and writes display history only for the rendered result.
 
 ## Verified status
 
-The final PW4 landscape audit classified 7,080 selectable quotes as safe in full, 8 as safe via
+The current PW4 landscape audit classified 7,079 selectable quotes as safe in full, 9 as safe via
 excerpt, and 3 as dirty. It found zero empty display-safe minute pools, zero clipping, zero bodies
 over ten lines, zero attributions over three lines, and no unsupported glyph in the curated QA
 set. The final result is **READY FOR PHYSICAL KINDLE TEST**. Exact measurements and artifacts are
 in [`reports/PHASE3_RENDER_FINALIZATION_REPORT.md`](reports/PHASE3_RENDER_FINALIZATION_REPORT.md).
+Date/accent comparison results are in
+[`reports/PHASE4A3_DATE_AND_TIME_FONT_REPORT.md`](reports/PHASE4A3_DATE_AND_TIME_FONT_REPORT.md).

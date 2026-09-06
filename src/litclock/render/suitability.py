@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date
 
 from litclock.models import Quote
 from litclock.render.layout import LayoutEngine, LayoutError
@@ -12,6 +13,7 @@ from litclock.render.models import (
     RenderabilityStatus,
     RenderQuote,
     RenderValidationError,
+    TimeEmphasis,
 )
 from litclock.render.presentation import excerpt_candidates, validate_excerpt_integrity
 from litclock.render.profiles import DeviceProfile
@@ -28,6 +30,11 @@ def is_renderable_for_device(
     quote: Quote | RenderQuote,
     profile: DeviceProfile,
     font: FontSelection,
+    *,
+    time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
+    time_font: FontSelection | None = None,
+    show_date: bool | None = None,
+    display_date: date | None = None,
 ) -> RenderabilityResult:
     """Classify and prepare one quote for a concrete device profile."""
     try:
@@ -47,12 +54,25 @@ def is_renderable_for_device(
             "title and creator metadata are both empty",
         )
 
-    engine = LayoutEngine(font)
+    engine = LayoutEngine(font, time_font)
+    date_visible = profile.show_date_by_default if show_date is None else show_date
+    if date_visible:
+        from litclock.render.date_label import format_short_date
+
+        date_text = format_short_date(display_date or date(2026, 9, 5))
+    else:
+        date_text = None
     failures: list[LayoutError] = []
     for compact in (False, True):
         candidate = _with_strategy(full, compact=compact)
         try:
-            layout = engine.layout(candidate, profile, compact=compact)
+            layout = engine.layout(
+                candidate,
+                profile,
+                compact=compact,
+                time_emphasis=time_emphasis,
+                date_text=date_text,
+            )
             return RenderabilityResult(
                 RenderabilityStatus.DISPLAY_SAFE_FULL,
                 candidate,
@@ -79,7 +99,13 @@ def is_renderable_for_device(
         for compact in (False, True):
             candidate = _with_strategy(excerpt, compact=compact)
             try:
-                layout = engine.layout(candidate, profile, compact=compact)
+                layout = engine.layout(
+                    candidate,
+                    profile,
+                    compact=compact,
+                    time_emphasis=time_emphasis,
+                    date_text=date_text,
+                )
                 return RenderabilityResult(
                     RenderabilityStatus.DISPLAY_SAFE_EXCERPT,
                     candidate,

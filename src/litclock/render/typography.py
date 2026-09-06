@@ -47,6 +47,7 @@ class LoadedFonts:
     bold_italic: ImageFont.FreeTypeFont
     attribution_regular: ImageFont.FreeTypeFont
     attribution_italic: ImageFont.FreeTypeFont
+    date_regular: ImageFont.FreeTypeFont
 
 
 _SYSTEM_FAMILIES = (
@@ -85,6 +86,18 @@ _SYSTEM_FAMILIES = (
         "LiberationSerif-Italic.ttf",
         "LiberationSerif-BoldItalic.ttf",
     ),
+)
+
+_TIME_SANS_FAMILIES = (
+    ("DejaVu Sans", "DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
+    ("Liberation Sans", "LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
+    ("Arial", "Arial.ttf", "Arial Bold.ttf"),
+)
+
+_TIME_SERIF_FAMILIES = (
+    ("Times New Roman", "Times New Roman.ttf", "Times New Roman Bold.ttf"),
+    ("DejaVu Serif", "DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf"),
+    ("Liberation Serif", "LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf"),
 )
 
 
@@ -211,7 +224,75 @@ def discover_font(
     )
 
 
-def load_fonts(selection: FontSelection, body_size: int, attribution_size: int) -> LoadedFonts:
+def discover_time_font(
+    explicit_path: Path | str | None = None,
+    *,
+    regular_path: Path | str | None = None,
+    bold_path: Path | str | None = None,
+    system_style: str | None = None,
+    exclude_family: str | None = None,
+) -> FontSelection:
+    """Load a real accent face/pair or discover a local sans/second-serif pair.
+
+    A single explicit file remains a single honest face. A structured configuration
+    requires both regular and bold so the renderer never invents a weight.
+    """
+    if explicit_path is not None and (regular_path is not None or bold_path is not None):
+        raise FontNotFoundError(
+            "--time-font cannot be combined with --time-font-regular/--time-font-bold"
+        )
+    if system_style is not None and (
+        explicit_path is not None or regular_path is not None or bold_path is not None
+    ):
+        raise FontNotFoundError("system accent discovery cannot be combined with explicit paths")
+    if explicit_path is not None:
+        path, family, style = _loadable_font_path(explicit_path, role="time accent")
+        normalized = style.casefold()
+        is_bold = any(token in normalized for token in ("bold", "black", "heavy", "demi", "semi"))
+        return FontSelection(
+            family,
+            path,
+            path if is_bold else None,
+            None,
+            None,
+            fallback_used=not is_bold,
+        )
+    if regular_path is not None or bold_path is not None:
+        missing = [
+            role for role, path in (("regular", regular_path), ("bold", bold_path)) if path is None
+        ]
+        if missing:
+            raise FontNotFoundError(
+                f"explicit time font requires regular and bold faces; missing: {', '.join(missing)}"
+            )
+        assert regular_path is not None and bold_path is not None
+        regular = _loadable_font_path(regular_path, role="time regular")
+        bold = _loadable_font_path(bold_path, role="time bold")
+        _validate_face_style("bold", bold[2])
+        family = regular[1] if regular[1] == bold[1] else f"{regular[1]} / {bold[1]}"
+        return FontSelection(family, regular[0], bold[0], None, None)
+    if system_style not in {"sans", "serif"}:
+        raise FontNotFoundError("time font requires explicit paths or system_style sans|serif")
+    families = _TIME_SANS_FAMILIES if system_style == "sans" else _TIME_SERIF_FAMILIES
+    for name, regular_name, bold_name in families:
+        if exclude_family and name.casefold() == exclude_family.casefold():
+            continue
+        regular = _find_filename(regular_name)
+        bold = _find_filename(bold_name)
+        if regular is not None and bold is not None:
+            return FontSelection(name, regular, bold, None, None)
+    raise FontNotFoundError(f"no supported local {system_style} time-font family was found")
+
+
+def load_fonts(
+    selection: FontSelection,
+    body_size: int,
+    attribution_size: int,
+    *,
+    highlight_size: int | None = None,
+    time_selection: FontSelection | None = None,
+    date_size: int | None = None,
+) -> LoadedFonts:
     def load(path: Path | None, size: int) -> ImageFont.FreeTypeFont:
         selected_path = path or selection.regular
         try:
@@ -219,13 +300,16 @@ def load_fonts(selection: FontSelection, body_size: int, attribution_size: int) 
         except OSError as error:
             raise FontNotFoundError(f"font could not be loaded: {selected_path}") from error
 
+    styled_size = highlight_size or body_size
+    time_source = time_selection or selection
     return LoadedFonts(
         regular=load(selection.regular, body_size),
-        bold=load(selection.bold, body_size),
+        bold=load(time_source.bold or time_source.regular, styled_size),
         italic=load(selection.italic, body_size),
         bold_italic=load(selection.bold_italic, body_size),
         attribution_regular=load(selection.regular, attribution_size),
         attribution_italic=load(selection.italic, attribution_size),
+        date_regular=load(selection.regular, date_size or attribution_size),
     )
 
 

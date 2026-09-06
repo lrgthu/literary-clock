@@ -1,5 +1,6 @@
 """Device-independent literary-clock layout and bitmap rendering."""
 
+from litclock.render.date_label import format_short_date
 from litclock.render.models import (
     AttributionStyle,
     DirtyRecordStatus,
@@ -8,6 +9,7 @@ from litclock.render.models import (
     RenderMode,
     RenderQuote,
     RenderValidationError,
+    TimeEmphasis,
 )
 from litclock.render.pillow_renderer import PillowRenderer
 from litclock.render.profiles import DeviceProfile, get_device_profile
@@ -22,5 +24,7 @@ __all__ = [
     "RenderQuote",
     "RenderabilityStatus",
     "RenderValidationError",
+    "TimeEmphasis",
+    "format_short_date",
     "get_device_profile",
 ]

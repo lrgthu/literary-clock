@@ -28,6 +28,12 @@ class AttributionStyle(StrEnum):
     AUTHOR_BOOK = "author-book"
 
 
+class TimeEmphasis(StrEnum):
+    CLASSIC = "classic"
+    SUBTLE_LIFT = "subtle-lift"
+    EXPRESSIVE = "expressive"
+
+
 class DirtyRecordStatus(StrEnum):
     CLEAN = "CLEAN"
     DIRTY_SERIALIZED_RECORD = "DIRTY_SERIALIZED_RECORD"
@@ -150,6 +156,8 @@ class StyledSegment:
     highlighted: bool
     source_start: int
     source_end: int
+    font_size: int
+    baseline_shift: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +168,7 @@ class BodyLine:
     y: float
     width: float
     height: int
+    baseline: float
     segments: tuple[StyledSegment, ...]
     paragraph_index: int
 
@@ -174,16 +183,34 @@ class AttributionLine:
     font_role: str
 
 
+@dataclass(frozen=True, slots=True)
+class DateLabel:
+    text: str
+    x: float
+    y: float
+    width: float
+    height: int
+    font_size: int
+
+
 @dataclass(slots=True)
 class LayoutDiagnostics:
     font_family: str
     font_regular_path: str
     font_bold_path: str
     font_italic_path: str
+    time_font_family: str
+    time_font_path: str
+    time_font_bold_face_available: bool
+    time_font_fallback_to_body: bool
     bold_face_available: bool
     italic_face_available: bool
     bold_italic_face_available: bool
     body_font_size: int
+    highlight_font_size: int
+    highlight_scale: float
+    highlight_baseline_shift: int
+    time_emphasis: str
     attribution_font_size: int
     body_line_count: int
     body_bbox: Rectangle
@@ -218,6 +245,12 @@ class LayoutDiagnostics:
     rendered_title: str = ""
     rendered_author: str = ""
     compact_layout: bool = False
+    quote_attribution_gap: int = 0
+    date_visible: bool = False
+    date_text: str = ""
+    date_font_size: int = 0
+    date_bbox: Rectangle | None = None
+    date_collision: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -229,6 +262,7 @@ class LayoutResult:
     body_lines: tuple[BodyLine, ...]
     attribution_lines: tuple[AttributionLine, ...]
     diagnostics: LayoutDiagnostics
+    date_label: DateLabel | None = None
 
 
 @dataclass(frozen=True, slots=True)

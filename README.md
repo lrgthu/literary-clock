@@ -8,8 +8,9 @@ with that phrase emphasized inside the author's original wording and quiet book/
 below it.
 
 The primary device is a **Kindle Paperwhite 4 / 10th Generation**, rendered natively at
-**1448 × 1072 landscape, 300 ppi**. Portrait remains supported. There is no standalone digital
-clock, date, weather, dashboard, iconography, border, or decorative interface.
+**1448 × 1072 landscape, 300 ppi**. Portrait remains supported. PW4 landscape includes an optional
+quiet renderer-owned short date in the upper-left; there is no standalone digital clock, weather,
+dashboard, iconography, border, Kindle status bar, or decorative interface.
 
 ## Current V1 status
 
@@ -25,10 +26,11 @@ clock, date, weather, dashboard, iconography, border, or decorative interface.
 
 Exact phase snapshots and renderer measurements are in [`docs/reports/`](docs/reports/).
 
-This repository does **not** configure or communicate with a Kindle. It produces local bitmap
-previews only. Date, weather, dashboard, clock icons, and other ambient-display features are
-intentionally out of scope for V1: the screen is a quotation, its inline time phrase, and discreet
-literary attribution.
+The renderer produces the frame on the host rather than typesetting on the Kindle. The bounded,
+reversible helpers in `kindle/` support physical fullscreen testing but do not schedule updates or
+install a persistent service. Weather, dashboards, clock icons, and other ambient-display features
+remain out of scope: the screen is a date marginal note, one quotation, its inline time phrase, and
+discreet literary attribution.
 
 ## Architecture
 
@@ -401,9 +403,18 @@ explicit single-face fallbacks: the CLI warns that bold time emphasis and italic
 unavailable, and metadata reports those missing faces instead of pretending the regular file is a
 complete family. Automatic discovery still requires and returns a complete family.
 
+The highlighted phrase may use an independent accent family. Pass a real pair with
+`--time-font-regular` and `--time-font-bold`; both paths are required and the bold face is checked
+using its embedded style metadata. `--time-font PATH` is an honest single-face option: that exact
+face is used, and the CLI warns when it is not actually bold. With no time-font option, wrapping
+and drawing use the body family's bold face exactly as before. No configured font failure silently
+substitutes a different family.
+
 ```bash
-uv run litclock render 15:46 --device pw4 --orientation landscape --preview
-uv run litclock render-now --device pw4 --orientation landscape --mode 1bit
+uv run litclock render 15:46 --device pw4 --orientation landscape --preview \
+  --date 2026-09-05 --time-emphasis subtle-lift \
+  --time-font-regular /path/Accent-Regular.ttf --time-font-bold /path/Accent-Bold.ttf
+uv run litclock render-now --device pw4 --orientation landscape --mode 1bit --show-date
 uv run litclock render-id 42 --device pw4 --orientation landscape
 uv run litclock render 16:37 --device custom --width 800 --height 1200 --preview
 ```
@@ -423,6 +434,11 @@ modes are `grayscale` and `1bit`; crisp threshold conversion is the 1-bit defaul
 `--dither floyd-steinberg` exists for deliberate comparison. The clock face never includes a
 separate digital time.
 
+PW4 landscape shows the date by default as locale-independent English text such as
+`Sat, Sep 5`. `--date YYYY-MM-DD` makes preview output reproducible; `--show-date` and
+`--hide-date` explicitly control it. Other profiles keep the label off unless requested. The date
+source is independent from quote selection and contains no clock time or Kindle system UI.
+
 Before layout, the presentation gate rejects raw serialized corpus rows, concatenated records,
 and corrupt excerpt/source mappings. A rejected selection is not written to display history; the
 selector tries another quote from the same minute without disturbing the rejected item in its
@@ -441,8 +457,9 @@ This audits every selectable quote and all 1,440 effective minute pools for PW4 
 writes `data/generated/RENDER_QA.json`, `RENDER_QA.md`,
 `PHASE3_RENDER_FINALIZATION_REPORT.md`, and ignored PNG/contact-sheet artifacts under
 `data/generated/render_previews/pw4_landscape/`. Every frame records canonical/display length,
-excerpt offsets, font sizes, line counts, attribution transformations, body/attribution bounds,
-occupancy, highlight wrapping, clipping, fallback-font use, output mode, and unsupported glyphs.
+excerpt offsets, font families/sizes, line counts, attribution transformations,
+body/attribution/date bounds, occupancy, highlight wrapping, clipping, fallback-font use, output
+mode, and unsupported glyphs. It also emits a curated Phase 4A.3 date/time-font contact sheet.
 
 ## Development
 

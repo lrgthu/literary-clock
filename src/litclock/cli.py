@@ -43,12 +43,13 @@ from litclock.phase2d import (
     write_phase2d_outputs,
     write_phase2d_review_export,
 )
-from litclock.render.models import AttributionStyle, DitherMode, RenderMode
+from litclock.render.date_label import current_local_date, parse_date_override
+from litclock.render.models import AttributionStyle, DitherMode, RenderMode, TimeEmphasis
 from litclock.render.pillow_renderer import PillowRenderer
 from litclock.render.preview import load_quote_by_id, run_render_qa, save_rendered_frame
 from litclock.render.profiles import get_device_profile
 from litclock.render.suitability import is_renderable_for_device
-from litclock.render.typography import discover_font
+from litclock.render.typography import discover_font, discover_time_font
 from litclock.selector import NoQuoteAvailable, QuoteSelector
 from litclock.stats import calculate_stats, write_reports
 from litclock.wikisource import acquire_dump
@@ -91,6 +92,13 @@ def _font_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--font-bold-italic", type=Path, help="bold italic face for an explicit family"
     )
+    parser.add_argument(
+        "--time-font",
+        type=Path,
+        help="single accent face used exactly as supplied; prefer the regular/bold pair",
+    )
+    parser.add_argument("--time-font-regular", type=Path, help="regular accent-family face")
+    parser.add_argument("--time-font-bold", type=Path, help="bold accent-family face")
 
 
 def _font_selection(args: argparse.Namespace):
@@ -105,6 +113,23 @@ def _font_selection(args: argparse.Namespace):
         print(
             "warning: single-face font fallback is active; bold time emphasis and italic title "
             "are unavailable",
+            file=sys.stderr,
+        )
+    return selection
+
+
+def _time_font_selection(args: argparse.Namespace):
+    if not any((args.time_font, args.time_font_regular, args.time_font_bold)):
+        return None
+    selection = discover_time_font(
+        args.time_font,
+        regular_path=args.time_font_regular,
+        bold_path=args.time_font_bold,
+    )
+    if not selection.has_bold:
+        print(
+            "warning: the explicit time font has no verified bold face; the supplied face "
+            "will be used honestly without synthetic bold",
             file=sys.stderr,
         )
     return selection
@@ -134,6 +159,36 @@ def _render_arguments(
         "--attribution-style",
         choices=tuple(AttributionStyle),
         default=AttributionStyle.BOOK_AUTHOR.value,
+    )
+    parser.add_argument(
+        "--time-emphasis",
+        choices=tuple(TimeEmphasis),
+        default=TimeEmphasis.SUBTLE_LIFT.value,
+        help="inline time treatment (default: subtle-lift)",
+    )
+    date_group = parser.add_mutually_exclusive_group()
+    date_group.add_argument(
+        "--show-date",
+        dest="show_date",
+        action="store_true",
+        help="show the renderer-owned date label",
+    )
+    date_group.add_argument(
+        "--hide-date",
+        dest="show_date",
+        action="store_false",
+        help="hide the renderer-owned date label",
+    )
+    parser.set_defaults(show_date=None)
+    parser.add_argument(
+        "--date",
+        help="deterministic local date override in YYYY-MM-DD form",
+    )
+    parser.add_argument(
+        "--date-format",
+        choices=("short",),
+        default="short",
+        help="date label format (default: short)",
     )
     if selection:
         parser.add_argument("--seed", type=int, help="deterministic selector RNG seed")
@@ -196,6 +251,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _database_argument(render_qa_parser)
     _font_arguments(render_qa_parser)
+    render_qa_parser.add_argument(
+        "--time-emphasis",
+        choices=tuple(TimeEmphasis),
+        default=TimeEmphasis.SUBTLE_LIFT.value,
+    )
 
     mine_parser = commands.add_parser(
         "mine-standard-ebooks", help="acquire and mine a bounded Standard Ebooks sample"
@@ -400,6 +460,11 @@ def _render_quote(
         orientation=args.orientation,
     )
     font = _font_selection(args)
+    time_font = _time_font_selection(args)
+    show_date = profile.show_date_by_default if args.show_date is None else args.show_date
+    if args.date and args.show_date is False:
+        raise ValueError("--date cannot be combined with --hide-date")
+    display_date = parse_date_override(args.date) if args.date else current_local_date()
     connection = connect_database(args.db)
     try:
         if quote_id is not None:
@@ -409,7 +474,15 @@ def _render_quote(
 
                 display_minute, _ = parse_time_24h(args.time)
             quote = load_quote_by_id(connection, quote_id, display_minute)
-            suitability = is_renderable_for_device(quote, profile, font)
+            suitability = is_renderable_for_device(
+                quote,
+                profile,
+                font,
+                time_emphasis=TimeEmphasis(args.time_emphasis),
+                time_font=time_font,
+                show_date=show_date,
+                display_date=display_date,
+            )
             if suitability.quote is None:
                 raise ValueError(
                     f"quote {quote.id} is {suitability.status.value}: {suitability.reason}"
@@ -420,7 +493,15 @@ def _render_quote(
             suitability_by_id = {}
 
             def display_safe(candidate: Quote) -> bool:
-                result = is_renderable_for_device(candidate, profile, font)
+                result = is_renderable_for_device(
+                    candidate,
+                    profile,
+                    font,
+                    time_emphasis=TimeEmphasis(args.time_emphasis),
+                    time_font=time_font,
+                    show_date=show_date,
+                    display_date=display_date,
+                )
                 suitability_by_id[candidate.id] = result
                 return result.quote is not None
 
@@ -444,7 +525,7 @@ def _render_quote(
             / "render_previews"
             / f"{compact_time}_q{quote.id}_{profile.name}_{mode.value}.png"
         )
-    renderer = PillowRenderer(font)
+    renderer = PillowRenderer(font, time_font=time_font)
     image_path, metadata_path, _ = save_rendered_frame(
         renderer,
         render_quote,
@@ -453,6 +534,9 @@ def _render_quote(
         mode=mode,
         dither=DitherMode(args.dither),
         attribution_style=AttributionStyle(args.attribution_style),
+        time_emphasis=TimeEmphasis(args.time_emphasis),
+        show_date=show_date,
+        display_date=display_date,
     )
     return image_path, metadata_path
 
@@ -512,6 +596,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     connection,
                     PROJECT_ROOT,
                     font=_font_selection(args),
+                    time_font=_time_font_selection(args),
+                    time_emphasis=TimeEmphasis(args.time_emphasis),
                 )
             finally:
                 connection.close()

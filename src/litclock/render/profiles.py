@@ -15,6 +15,7 @@ class DeviceProfile:
     safe_margin_y: float = 0.075
     base_font_scale: float = 0.053
     attribution_scale: float = 0.44
+    attribution_gap_scale: float = 0.72
     minimum_body_scale: float = 0.025
     minimum_attribution_scale: float = 0.016
     maximum_quote_region: float = 0.68
@@ -27,6 +28,11 @@ class DeviceProfile:
     compact_line_width: float = 0.86
     normal_line_spacing: float = 1.16
     compact_line_spacing: float = 1.08
+    show_date_by_default: bool = False
+    date_scale: float = 0.72
+    minimum_date_scale: float = 0.014
+    date_inset_x: float = 0.05
+    date_inset_y: float = 0.05
 
     def __post_init__(self) -> None:
         if self.width < 200 or self.height < 200:
@@ -38,6 +44,7 @@ class DeviceProfile:
             self.safe_margin_y,
             self.base_font_scale,
             self.attribution_scale,
+            self.attribution_gap_scale,
             self.minimum_body_scale,
             self.minimum_attribution_scale,
             self.maximum_quote_region,
@@ -45,6 +52,10 @@ class DeviceProfile:
             self.compact_line_width,
             self.normal_line_spacing,
             self.compact_line_spacing,
+            self.date_scale,
+            self.minimum_date_scale,
+            self.date_inset_x,
+            self.date_inset_y,
         ):
             if not 0 < value < 2:
                 raise ValueError("profile scales must be between zero and two")
@@ -71,6 +82,10 @@ class DeviceProfile:
     def minimum_attribution_size(self) -> int:
         return max(10, round(self.width * self.minimum_attribution_scale))
 
+    @property
+    def minimum_date_size(self) -> int:
+        return max(10, round(self.width * self.minimum_date_scale))
+
 
 BUILTIN_PROFILES: dict[str, DeviceProfile] = {
     "kindle-1-4": DeviceProfile("kindle-1-4", 600, 800, pixel_density_ppi=167),
@@ -95,13 +110,19 @@ BUILTIN_PROFILES: dict[str, DeviceProfile] = {
         safe_margin_x=0.085,
         safe_margin_y=0.09,
         base_font_scale=0.043,
-        attribution_scale=0.43,
+        attribution_scale=0.51,
+        attribution_gap_scale=0.52,
         minimum_body_scale=0.026,
-        minimum_attribution_scale=0.016,
+        minimum_attribution_scale=0.019,
         maximum_quote_region=0.69,
         preferred_line_width=0.81,
         compact_line_width=0.86,
         pixel_density_ppi=300,
+        show_date_by_default=True,
+        date_scale=0.72,
+        minimum_date_scale=0.014,
+        date_inset_x=0.05,
+        date_inset_y=0.05,
     ),
 }
 

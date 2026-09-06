@@ -12,11 +12,13 @@ from litclock.render.models import (
     AttributionLine,
     AttributionStyle,
     BodyLine,
+    DateLabel,
     LayoutDiagnostics,
     LayoutResult,
     Rectangle,
     RenderQuote,
     StyledSegment,
+    TimeEmphasis,
 )
 from litclock.render.profiles import DeviceProfile
 from litclock.render.typography import (
@@ -40,6 +42,45 @@ class _RawLine:
     end: int
     width: float
     paragraph_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class EmphasisMetrics:
+    mode: TimeEmphasis
+    scale: float
+    font_size: int
+    baseline_shift: int
+
+
+def time_emphasis_metrics(mode: TimeEmphasis, body_size: int) -> EmphasisMetrics:
+    """Return deterministic mixed-style metrics for a body font size."""
+    if mode == TimeEmphasis.CLASSIC:
+        scale, shift_ratio = 1.0, 0.0
+    elif mode == TimeEmphasis.SUBTLE_LIFT:
+        scale, shift_ratio = 1.10, 0.05
+    else:
+        scale, shift_ratio = 1.16, 0.075
+    font_size = max(body_size, round(body_size * scale))
+    baseline_shift = 0 if shift_ratio == 0 else max(1, round(body_size * shift_ratio))
+    return EmphasisMetrics(mode, scale, font_size, baseline_shift)
+
+
+def _styled_line_geometry(
+    fonts: LoadedFonts,
+    emphasis: EmphasisMetrics,
+    *,
+    spacing: float,
+) -> tuple[int, int]:
+    """Return a collision-safe line height and the normal-text baseline offset."""
+    regular_ascent, regular_descent = fonts.regular.getmetrics()
+    highlight_ascent, highlight_descent = fonts.bold.getmetrics()
+    top_extent = max(regular_ascent, highlight_ascent + emphasis.baseline_shift)
+    bottom_extent = max(regular_descent, highlight_descent - emphasis.baseline_shift)
+    ink_height = top_extent + bottom_extent
+    styled_height = max(1, round(ink_height * spacing))
+    leading = max(0, styled_height - ink_height)
+    baseline_offset = leading // 2 + top_extent
+    return styled_height, baseline_offset
 
 
 def mixed_style_width(
@@ -197,6 +238,7 @@ def _segments_for_line(
     line: _RawLine,
     line_x: float,
     fonts: LoadedFonts,
+    emphasis: EmphasisMetrics,
 ) -> tuple[StyledSegment, ...]:
     points = sorted(
         {
@@ -215,7 +257,18 @@ def _segments_for_line(
         font = fonts.bold if highlighted else fonts.regular
         segment_text = quote.text[start:end]
         width = text_width(font, segment_text)
-        segments.append(StyledSegment(segment_text, x, width, highlighted, start, end))
+        segments.append(
+            StyledSegment(
+                segment_text,
+                x,
+                width,
+                highlighted,
+                start,
+                end,
+                emphasis.font_size if highlighted else fonts.regular.size,
+                emphasis.baseline_shift if highlighted else 0,
+            )
+        )
         x += width
     return tuple(segments)
 
@@ -387,8 +440,9 @@ def _fit_attribution(
 class LayoutEngine:
     """Fit a quote and attribution into a profile without clipping."""
 
-    def __init__(self, font: FontSelection) -> None:
+    def __init__(self, font: FontSelection, time_font: FontSelection | None = None) -> None:
         self.font = font
+        self.time_font = time_font
 
     def layout(
         self,
@@ -397,6 +451,8 @@ class LayoutEngine:
         *,
         attribution_style: AttributionStyle = AttributionStyle.BOOK_AUTHOR,
         compact: bool = False,
+        time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
+        date_text: str | None = None,
     ) -> LayoutResult:
         if quote.dirty_record_status.value != "CLEAN":
             raise LayoutError(
@@ -415,10 +471,14 @@ class LayoutEngine:
         attribution_width = max_width - attribution_shift
         length_factor = max(0.78, min(1.38, (180 / max(40, len(quote.text))) ** 0.18))
         starting_size = max(7, round(profile.base_font_size * length_factor))
+        minimum_emphasis = time_emphasis_metrics(time_emphasis, profile.minimum_body_size)
         minimum_probe = load_fonts(
             self.font,
             profile.minimum_body_size,
             profile.minimum_attribution_size,
+            highlight_size=minimum_emphasis.font_size,
+            time_selection=self.time_font,
+            date_size=profile.minimum_date_size,
         )
         protected_highlight_start, protected_highlight_end = _protected_highlight_range(quote)
         highlight_can_fit_readably = (
@@ -441,6 +501,8 @@ class LayoutEngine:
                 LoadedFonts,
                 list[_RawLine],
                 int,
+                int,
+                EmphasisMetrics,
             ]
             | None
         ) = None
@@ -451,12 +513,27 @@ class LayoutEngine:
                 profile.minimum_attribution_size,
                 round(body_size * profile.attribution_scale),
             )
-            fonts = load_fonts(self.font, body_size, attribution_size)
+            emphasis = time_emphasis_metrics(time_emphasis, body_size)
+            fonts = load_fonts(
+                self.font,
+                body_size,
+                attribution_size,
+                highlight_size=emphasis.font_size,
+                time_selection=self.time_font,
+                date_size=max(
+                    profile.minimum_date_size,
+                    min(attribution_size - 1, round(attribution_size * profile.date_scale)),
+                ),
+            )
             raw_lines = _wrap_body(quote, fonts, max_width)
             if not raw_lines:
                 raise LayoutError("the quote contains no renderable text")
             spacing = profile.compact_line_spacing if compact else profile.normal_line_spacing
-            body_line_height = line_height(fonts.regular, spacing=spacing)
+            body_line_height, baseline_offset = _styled_line_geometry(
+                fonts,
+                emphasis,
+                spacing=spacing,
+            )
             paragraph_transitions = sum(
                 current.paragraph_index != previous.paragraph_index
                 for previous, current in zip(raw_lines, raw_lines[1:], strict=False)
@@ -488,16 +565,30 @@ class LayoutEngine:
                 attribution_height = len(attr_specs) * attr_line_height
                 if len(attr_specs) > 1:
                     attribution_height += round(attr_line_height * 0.12)
-                gap = max(round(body_line_height * 0.72), round(profile.height * 0.025))
+                gap = max(
+                    round(body_line_height * profile.attribution_gap_scale),
+                    round(profile.height * 0.025),
+                )
                 if body_height + gap + attribution_height > available_height:
                     composition_too_tall = True
                     continue
+                candidate_top = profile.margin_y + round(
+                    (available_height - body_height - gap - attribution_height) * 0.46
+                )
+                if date_text:
+                    date_y = round(profile.height * profile.date_inset_y)
+                    date_bottom = date_y + line_height(fonts.date_regular, spacing=1.0)
+                    if date_bottom >= candidate_top:
+                        composition_too_tall = True
+                        continue
                 candidate = (
                     body_size,
                     attribution_size,
                     fonts,
                     raw_lines,
                     body_line_height,
+                    baseline_offset,
+                    emphasis,
                 )
                 if len(raw_lines) <= profile.soft_body_lines:
                     chosen = candidate
@@ -524,13 +615,18 @@ class LayoutEngine:
             fonts,
             raw_lines,
             body_line_height,
+            baseline_offset,
+            emphasis,
         ) = chosen
         attribution_left = quote_left + attribution_shift
         attr_specs, rendered_title, rendered_author = _fit_attribution(
             quote, fonts, attribution_width, attribution_style
         )
         attr_line_height = line_height(fonts.attribution_regular, spacing=1.12)
-        gap = max(round(body_line_height * 0.72), round(profile.height * 0.025))
+        gap = max(
+            round(body_line_height * profile.attribution_gap_scale),
+            round(profile.height * 0.025),
+        )
         paragraph_gap = round(body_line_height * (0.24 if compact else 0.35))
         transitions = sum(
             current.paragraph_index != previous.paragraph_index
@@ -545,13 +641,27 @@ class LayoutEngine:
             raise LayoutError("body and attribution exceed the vertical safe region")
         top = profile.margin_y + round((available_height - total_height) * 0.46)
 
+        date_label = None
+        if date_text:
+            date_x = round(profile.width * profile.date_inset_x)
+            date_y = round(profile.height * profile.date_inset_y)
+            date_height = line_height(fonts.date_regular, spacing=1.0)
+            date_label = DateLabel(
+                text=date_text,
+                x=float(date_x),
+                y=float(date_y),
+                width=text_width(fonts.date_regular, date_text),
+                height=date_height,
+                font_size=fonts.date_regular.size,
+            )
+
         body_lines: list[BodyLine] = []
         y = float(top)
         previous_paragraph: int | None = None
         for raw_line in raw_lines:
             if previous_paragraph is not None and raw_line.paragraph_index != previous_paragraph:
                 y += paragraph_gap
-            segments = _segments_for_line(quote, raw_line, quote_left, fonts)
+            segments = _segments_for_line(quote, raw_line, quote_left, fonts, emphasis)
             body_lines.append(
                 BodyLine(
                     raw_line.start,
@@ -560,6 +670,7 @@ class LayoutEngine:
                     y,
                     raw_line.width,
                     body_line_height,
+                    y + baseline_offset,
                     segments,
                     raw_line.paragraph_index,
                 )
@@ -623,15 +734,52 @@ class LayoutEngine:
             or attr_bbox.bottom > profile.height - profile.margin_y
         )
         collision = bool(attribution_lines and body_bbox.bottom > attribution_lines[0].y)
+        date_bbox = (
+            Rectangle(
+                math.floor(date_label.x),
+                math.floor(date_label.y),
+                math.ceil(date_label.x + date_label.width),
+                math.ceil(date_label.y + date_label.height),
+            )
+            if date_label
+            else None
+        )
+        date_collision = bool(
+            date_bbox
+            and not (
+                date_bbox.right <= body_bbox.left
+                or date_bbox.left >= body_bbox.right
+                or date_bbox.bottom <= body_bbox.top
+                or date_bbox.top >= body_bbox.bottom
+            )
+        )
+        if date_bbox:
+            clipping = clipping or (
+                date_bbox.left < 0
+                or date_bbox.top < 0
+                or date_bbox.right > profile.width
+                or date_bbox.bottom > profile.height
+            )
+        if date_collision:
+            raise LayoutError("date label collides with the quote body", code="layout")
+        time_font = self.time_font or self.font
         diagnostics = LayoutDiagnostics(
             font_family=self.font.family,
             font_regular_path=str(self.font.regular),
             font_bold_path=str(self.font.bold or self.font.regular),
             font_italic_path=str(self.font.italic or self.font.regular),
+            time_font_family=time_font.family,
+            time_font_path=str(time_font.bold or time_font.regular),
+            time_font_bold_face_available=time_font.has_bold,
+            time_font_fallback_to_body=self.time_font is None,
             bold_face_available=self.font.has_bold,
             italic_face_available=self.font.has_italic,
             bold_italic_face_available=self.font.has_bold_italic,
             body_font_size=body_size,
+            highlight_font_size=emphasis.font_size,
+            highlight_scale=emphasis.scale,
+            highlight_baseline_shift=emphasis.baseline_shift,
+            time_emphasis=time_emphasis.value,
             attribution_font_size=attribution_size,
             body_line_count=len(body_lines),
             body_bbox=body_bbox,
@@ -662,5 +810,17 @@ class LayoutEngine:
             rendered_title=rendered_title,
             rendered_author=rendered_author,
             compact_layout=compact,
+            quote_attribution_gap=gap,
+            date_visible=date_label is not None,
+            date_text=date_text or "",
+            date_font_size=date_label.font_size if date_label else 0,
+            date_bbox=date_bbox,
+            date_collision=date_collision,
         )
-        return LayoutResult(quote, tuple(body_lines), tuple(attribution_lines), diagnostics)
+        return LayoutResult(
+            quote,
+            tuple(body_lines),
+            tuple(attribution_lines),
+            diagnostics,
+            date_label,
+        )

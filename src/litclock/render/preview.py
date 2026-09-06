@@ -13,6 +13,7 @@ import statistics
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from litclock.db import row_to_quote
 from litclock.models import Quote
+from litclock.render.date_label import format_short_date
 from litclock.render.models import (
     AttributionStyle,
     DitherMode,
@@ -27,18 +29,20 @@ from litclock.render.models import (
     RenderabilityStatus,
     RenderMode,
     RenderQuote,
+    TimeEmphasis,
 )
 from litclock.render.pillow_renderer import PillowRenderer
 from litclock.render.presentation import classify_dirty_record
 from litclock.render.profiles import BUILTIN_PROFILES, DeviceProfile
 from litclock.render.suitability import is_renderable_for_device
-from litclock.render.typography import FontSelection
+from litclock.render.typography import FontNotFoundError, FontSelection, discover_time_font
 
 RENDERABLE_STATUSES = ("VERIFIED_EXACT", "VERIFIED_NORMALIZED")
 SAFE_STATUSES = {
     RenderabilityStatus.DISPLAY_SAFE_FULL,
     RenderabilityStatus.DISPLAY_SAFE_EXCERPT,
 }
+QA_DATE = date(2026, 9, 5)
 
 
 def load_quote_by_id(
@@ -86,6 +90,9 @@ def save_rendered_frame(
     mode: RenderMode,
     dither: DitherMode,
     attribution_style: AttributionStyle,
+    time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
+    show_date: bool | None = None,
+    display_date: date | None = None,
 ) -> tuple[Path, Path, dict[str, Any]]:
     frame = renderer.render(
         quote,
@@ -93,6 +100,9 @@ def save_rendered_frame(
         mode=mode,
         dither=dither,
         attribution_style=attribution_style,
+        time_emphasis=time_emphasis,
+        show_date=show_date,
+        display_date=display_date,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.image.save(output, format="PNG", optimize=False)
@@ -109,6 +119,11 @@ def save_rendered_frame(
         "source_provenance_id": quote.source_provenance_id,
         "device": asdict(profile),
         "attribution_style": attribution_style.value,
+        "time_emphasis": time_emphasis.value,
+        "date": frame.diagnostics.date_text or None,
+        "date_visible": frame.diagnostics.date_visible,
+        "body_font_family": renderer.font.family,
+        "time_font_family": (renderer.time_font or renderer.font).family,
         "diagnostics": frame.diagnostics.as_dict(),
     }
     metadata_path = output.with_suffix(".json")
@@ -184,11 +199,20 @@ def _audit_corpus(
     quotes: list[Quote],
     profile: DeviceProfile,
     renderer: PillowRenderer,
+    time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
 ) -> tuple[dict[int, RenderabilityResult], dict[str, Any]]:
     results: dict[int, RenderabilityResult] = {}
     status_counts: Counter[str] = Counter()
     for quote in quotes:
-        result = is_renderable_for_device(quote, profile, renderer.font)
+        result = is_renderable_for_device(
+            quote,
+            profile,
+            renderer.font,
+            time_emphasis=time_emphasis,
+            time_font=renderer.time_font,
+            show_date=True,
+            display_date=QA_DATE,
+        )
         results[quote.id] = result
         status_counts[result.status.value] += 1
 
@@ -314,6 +338,7 @@ def _qa_cases(
     results: dict[int, RenderabilityResult],
     profile: DeviceProfile,
     renderer: PillowRenderer,
+    time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
 ) -> list[tuple[str, str, Quote, RenderabilityResult]]:
     safe = [quote for quote in quotes if results[quote.id].status in SAFE_STATUSES]
     full = [
@@ -335,7 +360,15 @@ def _qa_cases(
     def result_for(quote: Quote) -> RenderabilityResult:
         if quote.id in results and quote.minute_of_day == results[quote.id].quote.display_minute:
             return results[quote.id]
-        return is_renderable_for_device(quote, profile, renderer.font)
+        return is_renderable_for_device(
+            quote,
+            profile,
+            renderer.font,
+            time_emphasis=time_emphasis,
+            time_font=renderer.time_font,
+            show_date=True,
+            display_date=QA_DATE,
+        )
 
     def minute_case(minute: int) -> Quote:
         safe_ids = [
@@ -634,11 +667,128 @@ The final validation commands are `pytest`, `ruff check`, `ruff format --check`,
 """
 
 
+def _phase4a3_comparison(
+    project_root: Path,
+    body_font: FontSelection,
+    quote: RenderQuote,
+    profile: DeviceProfile,
+) -> dict[str, Any]:
+    """Render a curated date/accent/emphasis matrix from one fixed quote."""
+    output_dir = (
+        project_root
+        / "data"
+        / "generated"
+        / "render_previews"
+        / "pw4_landscape"
+        / "phase4a3-date-time-font"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    font_options: dict[str, FontSelection | None] = {"same-family": None}
+    unavailable: dict[str, str] = {}
+    for label, style in (("sans-accent", "sans"), ("second-serif-accent", "serif")):
+        try:
+            font_options[label] = discover_time_font(
+                system_style=style,
+                exclude_family=body_font.family,
+            )
+        except FontNotFoundError as error:
+            unavailable[label] = str(error)
+
+    variants = [
+        ("date-off_same-family_classic", False, "same-family", TimeEmphasis.CLASSIC),
+        ("date-on_same-family_classic", True, "same-family", TimeEmphasis.CLASSIC),
+        ("date-on_same-family_subtle-lift", True, "same-family", TimeEmphasis.SUBTLE_LIFT),
+        ("date-on_same-family_expressive", True, "same-family", TimeEmphasis.EXPRESSIVE),
+    ]
+    if "sans-accent" in font_options:
+        variants.extend(
+            [
+                (
+                    "date-off_sans-accent_subtle-lift",
+                    False,
+                    "sans-accent",
+                    TimeEmphasis.SUBTLE_LIFT,
+                ),
+                ("date-on_sans-accent_classic", True, "sans-accent", TimeEmphasis.CLASSIC),
+                ("date-on_sans-accent_subtle-lift", True, "sans-accent", TimeEmphasis.SUBTLE_LIFT),
+                ("date-on_sans-accent_expressive", True, "sans-accent", TimeEmphasis.EXPRESSIVE),
+            ]
+        )
+    if "second-serif-accent" in font_options:
+        variants.extend(
+            [
+                (
+                    "date-on_second-serif-accent_subtle-lift",
+                    True,
+                    "second-serif-accent",
+                    TimeEmphasis.SUBTLE_LIFT,
+                ),
+                (
+                    "date-on_second-serif-accent_expressive",
+                    True,
+                    "second-serif-accent",
+                    TimeEmphasis.EXPRESSIVE,
+                ),
+            ]
+        )
+
+    records: list[dict[str, Any]] = []
+    sheet_items: list[tuple[str, Path]] = []
+    for label, show_date, font_label, emphasis in variants:
+        time_font = font_options[font_label]
+        renderer = PillowRenderer(body_font, time_font=time_font)
+        output = output_dir / f"{label}_q{quote.quote_id}.png"
+        image_path, metadata_path, metadata = save_rendered_frame(
+            renderer,
+            quote,
+            profile,
+            output,
+            mode=RenderMode.ONE_BIT,
+            dither=DitherMode.THRESHOLD,
+            attribution_style=AttributionStyle.BOOK_AUTHOR,
+            time_emphasis=emphasis,
+            show_date=show_date,
+            display_date=QA_DATE,
+        )
+        records.append(
+            {
+                "variant": label,
+                "path": str(image_path.relative_to(project_root)),
+                "metadata_path": str(metadata_path.relative_to(project_root)),
+                "show_date": show_date,
+                "body_font_family": body_font.family,
+                "time_font_family": (time_font or body_font).family,
+                "time_font_label": font_label,
+                "time_emphasis": emphasis.value,
+                "diagnostics": metadata["diagnostics"],
+            }
+        )
+        sheet_items.append((label, image_path))
+    sheet = _contact_sheet(
+        sheet_items,
+        output_dir / "PHASE4A3_CONTACT_SHEET.png",
+        columns=2,
+    )
+    return {
+        "quote_id": quote.quote_id,
+        "date": format_short_date(QA_DATE),
+        "body_font_family": body_font.family,
+        "font_options": {
+            label: (selection or body_font).family for label, selection in font_options.items()
+        },
+        "unavailable_font_options": unavailable,
+        "renders": records,
+        "contact_sheet": str(sheet.relative_to(project_root)),
+    }
+
+
 def run_render_qa(
     connection: sqlite3.Connection,
     project_root: Path,
     *,
     font: FontSelection | None = None,
+    time_font: FontSelection | None = None,
+    time_emphasis: TimeEmphasis = TimeEmphasis.SUBTLE_LIFT,
 ) -> dict[str, Any]:
     """Audit all pools and render the mandatory PW4-landscape cases."""
     preview_dir = project_root / "data" / "generated" / "render_previews" / "pw4_landscape"
@@ -657,11 +807,24 @@ def run_render_qa(
     ):
         (preview_dir / name).mkdir(parents=True, exist_ok=True)
 
-    renderer = PillowRenderer(font)
+    renderer = PillowRenderer(font, time_font=time_font)
     profile = BUILTIN_PROFILES["pw4_landscape"]
     quotes = _renderable_quotes(connection)
-    results, corpus_audit = _audit_corpus(connection, quotes, profile, renderer)
-    cases = _qa_cases(connection, quotes, results, profile, renderer)
+    results, corpus_audit = _audit_corpus(
+        connection,
+        quotes,
+        profile,
+        renderer,
+        time_emphasis,
+    )
+    cases = _qa_cases(
+        connection,
+        quotes,
+        results,
+        profile,
+        renderer,
+        time_emphasis,
+    )
     records: list[dict[str, Any]] = []
     contact: dict[str, list[tuple[str, Path]]] = {"grayscale": [], "1bit": []}
 
@@ -683,6 +846,9 @@ def run_render_qa(
                 mode=mode,
                 dither=DitherMode.THRESHOLD,
                 attribution_style=AttributionStyle.BOOK_AUTHOR,
+                time_emphasis=time_emphasis,
+                show_date=True,
+                display_date=QA_DATE,
             )
             diagnostics = metadata["diagnostics"]
             records.append(
@@ -717,6 +883,9 @@ def run_render_qa(
             mode=RenderMode.ONE_BIT,
             dither=dither,
             attribution_style=AttributionStyle.BOOK_AUTHOR,
+            time_emphasis=time_emphasis,
+            show_date=True,
+            display_date=QA_DATE,
         )
         dither_records.append((dither.value, image_path))
 
@@ -771,8 +940,14 @@ def run_render_qa(
         "font_family": renderer.font.family,
         "font_regular_path": str(renderer.font.regular),
     }
+    phase4a3 = _phase4a3_comparison(
+        project_root,
+        renderer.font,
+        comparison[3].quote,
+        profile,
+    )
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "primary_device": asdict(profile),
         "summary": summary,
         "corpus_audit": corpus_audit,
@@ -781,6 +956,7 @@ def run_render_qa(
             name: str(path.relative_to(project_root)) for name, path in sheets.items()
         },
         "renders": records,
+        "phase4a3_comparison": phase4a3,
     }
     generated = project_root / "data" / "generated"
     (generated / "RENDER_QA.json").write_text(
