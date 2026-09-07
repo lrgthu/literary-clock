@@ -8,10 +8,11 @@
 set -u
 
 runtime_root=/mnt/us/literary-clock/runtime
-runtime=$runtime_root/bin/literary-clock-runtime.sh
-power=/mnt/us/literary-clock/literary-clock-power.sh
-kron=/mnt/us/literary-clock/runtime/bin/kron
+launcher=$runtime_root/literary-clock-launch-current.sh
+kron=${LITCLOCK_KRON:-$runtime_root/tools/kron}
+if ! test -x "$kron"; then kron=$runtime_root/bin/kron; fi
 pilot_seconds=${LITCLOCK_PILOT_SECONDS:-420}
+update_minutes=${LITCLOCK_UPDATE_MINUTES:-1}
 status=$runtime_root/pilot-status.txt
 awesome_pids=
 cvm_pids=
@@ -37,11 +38,20 @@ restore() {
 }
 trap restore 0 1 2 15
 
-test -x "$runtime" || { echo "runtime missing: $runtime"; exit 1; }
-test -x "$power" || { echo "power helper missing: $power"; exit 1; }
+test -x "$launcher" || { echo "release launcher missing: $launcher"; exit 1; }
 test -x "$kron" || { echo "kron missing: $kron"; exit 1; }
+case "$update_minutes" in
+    1) schedule='* * * * *' ;;
+    2 | 3 | 5) schedule="*/$update_minutes * * * *" ;;
+    *) echo "LITCLOCK_UPDATE_MINUTES must be 1, 2, 3, or 5"; exit 1 ;;
+esac
+release=$(sed -n '1p' "$runtime_root/current-release")
+release_root=$runtime_root/releases/$release
+power=$release_root/bin/literary-clock-power.sh
+test -x "$power" || { echo "active release power helper missing: $power"; exit 1; }
 
 echo "pilot_seconds=$pilot_seconds"
+echo "update_minutes=$update_minutes"
 date '+pilot_start_local=%Y-%m-%dT%H:%M:%S%z'
 lipc-get-prop com.lab126.powerd battLevel 2>/dev/null | sed 's/^/battery_before=/'
 lipc-get-prop com.lab126.powerd flIntensity 2>/dev/null | sed 's/^/frontlight_before=/'
@@ -58,14 +68,15 @@ sleep 2
 # adding after startup is not observed until another timer/powerd event causes a rearm.
 # The binary runs directly from /mnt/us: no setup, rootfs symlink or boot hook.
 "$kron" -dir "$runtime_root/kron" remove literary-clock-minute >/dev/null 2>&1 || true
-"$kron" -dir "$runtime_root/kron" add -timeout 30s literary-clock-minute '* * * * *' "$runtime"
+export LITCLOCK_SCHEDULER_SOURCE=kron
+"$kron" -dir "$runtime_root/kron" add -timeout 30s literary-clock-minute "$schedule" "$launcher"
 "$kron" -dir "$runtime_root/kron" -keepawake off -wakelead 5s -jobtimeout 30s daemon &
 kron_pid=$!
 sleep 2
 echo "kron_pid=$kron_pid"
 "$kron" -dir "$runtime_root/kron" list || true
 
-"$runtime"
+"$launcher"
 
 sleep "$pilot_seconds"
 

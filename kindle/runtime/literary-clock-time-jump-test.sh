@@ -9,8 +9,7 @@
 set -u
 
 base=/mnt/us/literary-clock
-runtime=$base/runtime/bin/literary-clock-runtime.sh
-power=$base/literary-clock-power.sh
+launcher=$base/runtime/literary-clock-launch-current.sh
 status=$base/runtime/time-jump-status.txt
 awesome_pids=
 cvm_pids=
@@ -30,8 +29,10 @@ restore() {
 }
 trap restore 0 1 2 15
 
-test -x "$runtime" || { echo "runtime missing: $runtime"; exit 1; }
-test -x "$power" || { echo "power helper missing: $power"; exit 1; }
+test -x "$launcher" || { echo "release launcher missing: $launcher"; exit 1; }
+release=$(sed -n '1p' "$base/runtime/current-release")
+power=$base/runtime/releases/$release/bin/literary-clock-power.sh
+test -x "$power" || { echo "active release power helper missing: $power"; exit 1; }
 
 # One snapshot is logged for audit; runtime independently takes exactly one snapshot
 # for its own date+minute display transaction.
@@ -43,7 +44,7 @@ cvm_pids=$(pidof cvm 2>/dev/null || true)
 if test -n "$awesome_pids"; then kill -STOP $awesome_pids; fi
 if test -n "$cvm_pids"; then kill -STOP $cvm_pids; fi
 sleep 2
-"$runtime"
+"$launcher"
 runtime_rc=$?
 echo "runtime_exit=$runtime_rc"
 test "$runtime_rc" -eq 0 || exit "$runtime_rc"

@@ -27,9 +27,10 @@ dashboard, iconography, border, Kindle status bar, or decorative interface.
 Exact phase snapshots and renderer measurements are in [`docs/reports/`](docs/reports/).
 
 The frozen renderer produces reusable quote frames on the build Mac rather than typesetting on the
-Kindle. A bounded Phase 4B pilot has also proved a tiny, offline Kindle-native selector: it reads
-the Kindle's local clock, chooses a pre-rendered frame, displays it with FBInk, and owns persistent
-history without a Mac or network. No persistent scheduler or boot hook is enabled yet. Weather,
+Kindle. A bounded Phase 4B pilot and two-hour power study have proved a tiny, offline Kindle-native
+selector: it reads the Kindle's local clock, chooses a pre-rendered frame, displays it with FBInk,
+and owns persistent history without a Mac or network. No indefinite scheduler or boot hook is
+enabled by deployment. Weather,
 dashboards, clock icons, and other ambient-display features remain out of scope: the screen is a
 date marginal note, one quotation, its inline time phrase, and discreet literary attribution.
 
@@ -548,19 +549,30 @@ uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --rollback
 ```
 
 The deployer verifies source and copied assets, available storage, dimensions, crisp 1-bit mode,
-and SHA-256 values before atomically switching the `current` version pointer. The Kindle runtime
+and SHA-256 values before atomically switching the `current-release` pointer. The Kindle runtime
 uses POSIX shell, BusyBox, FBInk, and an optional official KindleCron binary; it captures epoch,
 calendar date, and minute in one local `date` call and contains no timezone database. History is
-committed only after FBInk returns success.
+committed only after FBInk returns success. Code, assets, release metadata, and the controlled
+one-shot reboot helper share one checksummed release, so rollback cannot combine new runtime code
+with old manifest data.
 
 The bounded pilot changed frames autonomously across eight consecutive local minutes and followed
 a user-initiated one-hour Kindle timezone change without a Mac, network, configuration change, or
-replay of missed minutes. It did **not** establish production battery behavior: on the tested
-firmware, the temporary fullscreen/`preventScreenSaver` configuration remained `active`, so the
-deep-sleep-compatible 24/7 lifecycle and boot persistence are intentionally not enabled. See
+replay of missed minutes. A later two-hour exact-mode run completed 121 displays, used no Wi-Fi,
+and moved the coarse battery reading from 100% to 97%, but necessarily prevented suspend to remain
+minute-accurate. Deep-sleep tests at two, three, and five minutes were not reliably recurring on the
+tested PW4/firmware; a long five-minute target became stale until USB wake. See
 [`kindle/README.md`](kindle/README.md) for recovery commands and
-[`PHASE4B_STANDALONE_RUNTIME_REPORT.md`](docs/reports/PHASE4B_STANDALONE_RUNTIME_REPORT.md) for the
-measurements and boundary.
+[`PHASE4B2_POWER_LIFECYCLE_REPORT.md`](docs/reports/PHASE4B2_POWER_LIFECYCLE_REPORT.md) for the
+measured cadence matrix and current deployment boundary.
+
+The reversible user-storage reboot-test hook is always opt-in, self-disarms before launch, and can
+be disabled without a rootfs change:
+
+```bash
+uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --enable-boot-hook
+uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --disable-boot-hook
+```
 
 ## Development
 
@@ -585,5 +597,5 @@ virtual environment, caches, and local scratch corpus are ignored rather than co
 - Phase 3 — device-independent literary page layout, bitmap rendering, and visual QA.
 - Phase 4A — physical PW4 renderer validation and frozen production typography.
 - Phase 4B.1 — bounded offline Kindle runtime pilot, transactional history, and local-time test.
-- Phase 4B.2 — pending explicitly authorized long-duration power, deep-sleep, ghosting, reboot, and
-  24/7 lifecycle validation.
+- Phase 4B.2 — measured exact/eco power behavior, release integrity, reversible startup, and bounded
+  reboot recovery; indefinite 24/7 activation remains an explicit post-test decision.

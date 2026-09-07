@@ -1,0 +1,7 @@
+# Exact mode: minute-accurate, Wi-Fi-free, and intentionally awake.
+cadence_minutes=1
+keepawake=3m
+full_refresh_interval=15
+
+# Zero is indefinite. Use a positive value for a bounded physical/reboot test.
+auto_stop_minutes=0

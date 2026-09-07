@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 BUNDLE_FORMAT_VERSION = 1
+RELEASE_FORMAT_VERSION = 1
+RUNTIME_VERSION = 2
 TRANSPORT_WIDTH = 1072
 TRANSPORT_HEIGHT = 1448
 

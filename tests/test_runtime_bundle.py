@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from datetime import date
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+import litclock.deploy as deploy_module
 from litclock.bundle import _date_key, _generated_at, _possible_date_labels, minute_window
-from litclock.deploy import DeploymentError, deploy_bundle, rollback_bundle
+from litclock.deploy import (
+    DeploymentError,
+    deploy_bundle,
+    rollback_bundle,
+    set_boot_hook,
+    validate_release,
+)
 from litclock.runtime_bundle import (
+    RELEASE_FORMAT_VERSION,
+    RUNTIME_VERSION,
     BundleManifest,
     BundleValidationError,
     DateAssetRecord,
@@ -35,9 +46,12 @@ def _bundle(root: Path, *, version: str = "test-v1", all_minutes: bool = True) -
     manifest = BundleManifest(
         {
             "format_version": "1",
+            "release_format_version": str(RELEASE_FORMAT_VERSION),
+            "runtime_version": str(RUNTIME_VERSION),
             "asset_set_version": version,
             "complete": "1" if all_minutes else "0",
             "renderer_preset": "pw4-v1",
+            "corpus_fingerprint": "test-fingerprint",
         },
         minutes,
         {
@@ -159,11 +173,80 @@ def test_deploy_is_staged_and_rollback_swaps_version(tmp_path: Path) -> None:
     assert deploy_bundle(first, mount, project, require_kindle=False) == "v1"
     assert deploy_bundle(second, mount, project, require_kindle=False) == "v2"
     runtime = mount / "literary-clock/runtime"
-    assert (runtime / "current").read_text().strip() == "v2"
-    assert (runtime / "previous").read_text().strip() == "v1"
+    assert (runtime / "current-release").read_text().strip() == "v2"
+    assert (runtime / "previous-release").read_text().strip() == "v1"
+    assert (runtime / "releases/v2/bundle/frames/q1.png").is_file()
+    assert (runtime / "releases/v2/bin/literary-clock-runtime.sh").is_file()
+    inventory = (runtime / "releases/v2/checksums.sha256").read_text()
+    assert "bundle/minutes.tsv" in inventory
+    assert "bundle/checksums.sha256" in inventory
+    assert "bundle/frames/q1.png" in inventory
+    assert "bin/literary-clock-runtime.sh" in inventory
+    assert "bin/literary-clock-power.sh" in inventory
+    assert "bin/literary-clock-service-start.sh" in inventory
+    assert "bin/literary-clock-service-stop.sh" in inventory
+    assert "bin/literary-clock-validate-release.sh" in inventory
+    assert "boot/emergency.sh" in inventory
+    assert (runtime / "literary-clock-service-start-current.sh").is_file()
+    assert (runtime / "literary-clock-service-stop-current.sh").is_file()
     assert rollback_bundle(mount, require_kindle=False) == "v1"
-    assert (runtime / "current").read_text().strip() == "v1"
-    assert (runtime / "previous").read_text().strip() == "v2"
+    assert (runtime / "current-release").read_text().strip() == "v1"
+    assert (runtime / "previous-release").read_text().strip() == "v2"
+
+
+def test_boot_hook_is_explicit_reversible_and_uses_active_release(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+
+    assert set_boot_hook(mount, enabled=True, require_kindle=False) == "enabled"
+    hook = mount / "emergency.sh"
+    assert hook.is_file()
+    script = hook.read_text()
+    assert "emergency.sh.used" in script
+    assert "literary-clock-service-start-current.sh" in script
+
+    assert set_boot_hook(mount, enabled=False, require_kindle=False) == "disabled"
+    assert not hook.exists()
+    assert (mount / "literary-clock/runtime/emergency.sh.disabled").is_file()
+    assert set_boot_hook(mount, enabled=True, require_kindle=False) == "enabled"
+    assert set_boot_hook(mount, enabled=False, require_kindle=False) == "disabled"
+    assert not hook.exists()
+
+
+def test_boot_hook_refuses_release_without_one_shot_kmc_hook(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+    release = mount / "literary-clock/runtime/releases/v1"
+    (release / "boot/emergency.sh").unlink()
+
+    with pytest.raises(DeploymentError):
+        set_boot_hook(mount, enabled=True, require_kindle=False)
+
+    assert not (mount / "emergency.sh").exists()
+
+
+def test_boot_hook_never_overwrites_an_unrelated_emergency_script(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+    emergency = mount / "emergency.sh"
+    emergency.write_text("#!/bin/sh\necho unrelated\n")
+
+    with pytest.raises(DeploymentError, match="unrelated"):
+        set_boot_hook(mount, enabled=True, require_kindle=False)
+
+    assert emergency.read_text() == "#!/bin/sh\necho unrelated\n"
 
 
 def test_deploy_refuses_partial_collision(tmp_path: Path) -> None:
@@ -176,3 +259,91 @@ def test_deploy_refuses_partial_collision(tmp_path: Path) -> None:
 
     with pytest.raises(DeploymentError, match="already exists"):
         deploy_bundle(source, mount, project, require_kindle=False)
+
+
+def test_release_inventory_rejects_corrupt_runtime_index_and_png(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+    release = mount / "literary-clock/runtime/releases/v1"
+
+    runtime = release / "bin/literary-clock-runtime.sh"
+    original_runtime = runtime.read_bytes()
+    runtime.write_bytes(original_runtime + b"\n# corrupt\n")
+    with pytest.raises(DeploymentError, match="checksum mismatch"):
+        validate_release(release)
+    runtime.write_bytes(original_runtime)
+
+    index = release / "bundle/minutes.tsv"
+    original_index = index.read_bytes()
+    index.write_bytes(original_index + b"corrupt\n")
+    with pytest.raises(DeploymentError):
+        validate_release(release)
+    index.write_bytes(original_index)
+
+    frame = release / "bundle/frames/q1.png"
+    frame.write_bytes(b"not a png")
+    with pytest.raises(DeploymentError):
+        validate_release(release)
+
+
+def test_corrupt_staged_runtime_cannot_replace_active_release(tmp_path: Path, monkeypatch) -> None:
+    project = Path(__file__).resolve().parents[1]
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(first, version="v1")
+    _bundle(second, version="v2")
+    deploy_bundle(first, mount, project, require_kindle=False)
+    original = deploy_module._write_release_checksums
+
+    def corrupt_after_inventory(root: Path) -> None:
+        original(root)
+        runtime = root / "bin/literary-clock-runtime.sh"
+        runtime.write_bytes(runtime.read_bytes() + b"\n# interrupted copy\n")
+
+    monkeypatch.setattr(deploy_module, "_write_release_checksums", corrupt_after_inventory)
+
+    with pytest.raises(DeploymentError, match="checksum mismatch"):
+        deploy_bundle(second, mount, project, require_kindle=False)
+
+    runtime_root = mount / "literary-clock/runtime"
+    assert (runtime_root / "current-release").read_text().strip() == "v1"
+    assert not (runtime_root / "releases/v2").exists()
+    assert validate_release(runtime_root / "releases/v1") == "v1"
+
+
+def test_device_startup_validator_checks_entire_release_inventory(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    _bundle(source, version="v1")
+    deploy_bundle(source, mount, project, require_kindle=False)
+    release = mount / "literary-clock/runtime/releases/v1"
+    validator = release / "bin/literary-clock-validate-release.sh"
+    env = {**os.environ, "LITCLOCK_ALLOW_TEST_RELEASE_PATH": "1"}
+
+    valid = subprocess.run(
+        ["sh", str(validator), str(release)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert valid.returncode == 0, valid.stderr
+
+    (release / "bundle/minutes.tsv").write_text("corrupt\n")
+    corrupt = subprocess.run(
+        ["sh", str(validator), str(release)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert corrupt.returncode == 12
+    assert "checksum" in corrupt.stderr

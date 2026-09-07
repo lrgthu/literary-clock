@@ -24,6 +24,8 @@ from litclock.render.production import PW4_V1_RENDER_CONFIG, resolve_production_
 from litclock.render.suitability import is_renderable_for_device
 from litclock.runtime_bundle import (
     BUNDLE_FORMAT_VERSION,
+    RELEASE_FORMAT_VERSION,
+    RUNTIME_VERSION,
     BundleManifest,
     DateAssetRecord,
     QuoteAssetRecord,
@@ -391,6 +393,8 @@ def build_pw4_bundle(
     }
     metadata = {
         "format_version": str(BUNDLE_FORMAT_VERSION),
+        "release_format_version": str(RELEASE_FORMAT_VERSION),
+        "runtime_version": str(RUNTIME_VERSION),
         "asset_set_version": output.name,
         "complete": "1" if len(selected_minutes) == 1440 else "0",
         "corpus_fingerprint": fingerprint,
