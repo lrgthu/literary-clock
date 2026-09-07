@@ -85,6 +85,10 @@ CREATE TABLE IF NOT EXISTS quote_provenance (
     highlight_start INTEGER,
     highlight_end INTEGER,
     duplicate_kind TEXT NOT NULL,
+    semantic_class TEXT,
+    semantic_action TEXT CHECK (semantic_action IN ('KEEP', 'QUARANTINE', 'REVIEW')),
+    semantic_reason_code TEXT,
+    semantic_audit_version TEXT,
     raw_payload TEXT NOT NULL,
     UNIQUE (source_id, source_record_id)
 );
@@ -119,6 +123,50 @@ CREATE TABLE IF NOT EXISTS quote_minute_eligibility (
 
 CREATE INDEX IF NOT EXISTS quote_minute_eligibility_minute_idx
     ON quote_minute_eligibility(minute_of_day, quote_id);
+
+CREATE TABLE IF NOT EXISTS semantic_audit_runs (
+    id INTEGER PRIMARY KEY,
+    audit_version TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    applied_at TEXT,
+    status TEXT NOT NULL CHECK (
+        status IN ('RUNNING', 'AUDIT_COMPLETE', 'APPLIED', 'SUPERSEDED', 'FAILED')
+    ),
+    corpus_fingerprint TEXT NOT NULL,
+    baseline_json TEXT,
+    decision_counts_json TEXT,
+    after_json TEXT,
+    error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS semantic_time_audit (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES semantic_audit_runs(id) ON DELETE CASCADE,
+    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    minute_of_day INTEGER NOT NULL CHECK (minute_of_day BETWEEN 0 AND 1439),
+    semantic_class TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('KEEP', 'QUARANTINE', 'REVIEW')),
+    reason_code TEXT NOT NULL,
+    parser_route TEXT NOT NULL,
+    confidence TEXT NOT NULL,
+    highlighted_text TEXT NOT NULL,
+    derived_minutes TEXT NOT NULL,
+    source_family TEXT NOT NULL,
+    source_candidate_type TEXT,
+    source_candidate_id INTEGER,
+    source_structure TEXT,
+    reviewed_by TEXT,
+    review_provenance TEXT,
+    audit_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (run_id, quote_id, minute_of_day)
+);
+
+CREATE INDEX IF NOT EXISTS semantic_time_audit_relationship_idx
+    ON semantic_time_audit(quote_id, minute_of_day, run_id);
+CREATE INDEX IF NOT EXISTS semantic_time_audit_decision_idx
+    ON semantic_time_audit(run_id, action, semantic_class, reason_code);
 
 CREATE TRIGGER IF NOT EXISTS quotes_default_minute_eligibility
 AFTER INSERT ON quotes
@@ -160,19 +208,6 @@ BEGIN
         'CANONICAL_MINUTE', NEW.time_24h, NEW.created_at
     );
 END;
-
-CREATE VIEW IF NOT EXISTS quote_minute_pool AS
-SELECT quote_id, minute_of_day, eligibility_type, confidence, evidence_type, evidence_text,
-       source_candidate_type, source_candidate_id
-FROM quote_minute_eligibility
-UNION ALL
-SELECT q.id, q.minute_of_day, 'EXACT_24H', 'LEGACY_VERIFIED',
-       'LEGACY_CANONICAL_MINUTE', q.time_24h, NULL, NULL
-FROM quotes AS q
-WHERE q.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
-  AND NOT EXISTS (
-      SELECT 1 FROM quote_minute_eligibility AS e WHERE e.quote_id = q.id
-  );
 
 CREATE TABLE IF NOT EXISTS import_issues (
     id INTEGER PRIMARY KEY,
@@ -309,6 +344,8 @@ CREATE INDEX IF NOT EXISTS mined_candidates_review_idx
     ON mined_candidates(review_status, duplicate_status, time_confidence);
 CREATE INDEX IF NOT EXISTS mined_candidates_hash_idx
     ON mined_candidates(normalized_quote_hash);
+CREATE INDEX IF NOT EXISTS mined_candidates_imported_quote_idx
+    ON mined_candidates(imported_quote_id);
 
 CREATE TABLE IF NOT EXISTS phase2a5_runs (
     id INTEGER PRIMARY KEY,
@@ -445,6 +482,8 @@ CREATE INDEX IF NOT EXISTS gutenberg_candidates_review_idx
     ON gutenberg_candidates(review_status, duplicate_status, time_confidence);
 CREATE INDEX IF NOT EXISTS gutenberg_candidates_hash_idx
     ON gutenberg_candidates(normalized_quote_hash);
+CREATE INDEX IF NOT EXISTS gutenberg_candidates_imported_quote_idx
+    ON gutenberg_candidates(imported_quote_id);
 
 CREATE TABLE IF NOT EXISTS phase2c_runs (
     id INTEGER PRIMARY KEY,
@@ -703,6 +742,8 @@ CREATE INDEX IF NOT EXISTS wikisource_candidates_review_idx
     ON wikisource_candidates(review_status, duplicate_status, time_confidence);
 CREATE INDEX IF NOT EXISTS wikisource_candidates_hash_idx
     ON wikisource_candidates(normalized_quote_hash);
+CREATE INDEX IF NOT EXISTS wikisource_candidates_imported_quote_idx
+    ON wikisource_candidates(imported_quote_id);
 
 CREATE TABLE IF NOT EXISTS wikisource_runs (
     id INTEGER PRIMARY KEY,
@@ -727,6 +768,44 @@ CREATE TABLE IF NOT EXISTS wikisource_runs (
 );
 """
 
+_QUOTE_MINUTE_POOL_VIEW = """
+DROP VIEW IF EXISTS quote_minute_pool;
+CREATE VIEW quote_minute_pool AS
+SELECT quote_id, minute_of_day, eligibility_type, confidence, evidence_type, evidence_text,
+       source_candidate_type, source_candidate_id
+FROM quote_minute_eligibility AS eligibility
+WHERE NOT EXISTS (SELECT 1 FROM semantic_audit_runs WHERE status = 'APPLIED')
+   OR EXISTS (
+       SELECT 1
+       FROM semantic_time_audit AS audit
+       JOIN semantic_audit_runs AS run ON run.id = audit.run_id
+       WHERE run.status = 'APPLIED'
+         AND audit.quote_id = eligibility.quote_id
+         AND audit.minute_of_day = eligibility.minute_of_day
+         AND audit.action = 'KEEP'
+)
+UNION ALL
+SELECT q.id, q.minute_of_day, 'EXACT_24H', 'LEGACY_VERIFIED',
+       'LEGACY_CANONICAL_MINUTE', q.time_24h, NULL, NULL
+FROM quotes AS q
+WHERE q.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
+  AND NOT EXISTS (
+      SELECT 1 FROM quote_minute_eligibility AS e WHERE e.quote_id = q.id
+  )
+  AND (
+      NOT EXISTS (SELECT 1 FROM semantic_audit_runs WHERE status = 'APPLIED')
+      OR EXISTS (
+          SELECT 1
+          FROM semantic_time_audit AS audit
+          JOIN semantic_audit_runs AS run ON run.id = audit.run_id
+          WHERE run.status = 'APPLIED'
+            AND audit.quote_id = q.id
+            AND audit.minute_of_day = q.minute_of_day
+            AND audit.action = 'KEEP'
+      )
+  );
+"""
+
 _MINED_CANDIDATE_MIGRATIONS = {
     "contextual_resolution": "TEXT",
     "resolved_minute_of_day": "INTEGER CHECK (resolved_minute_of_day BETWEEN 0 AND 1439)",
@@ -740,6 +819,13 @@ _MINED_CANDIDATE_MIGRATIONS = {
 
 _GUTENBERG_BOOK_MIGRATIONS = {
     "text_cached": "INTEGER NOT NULL DEFAULT 0 CHECK (text_cached IN (0, 1))",
+}
+
+_PROVENANCE_MIGRATIONS = {
+    "semantic_class": "TEXT",
+    "semantic_action": "TEXT CHECK (semantic_action IN ('KEEP', 'QUARANTINE', 'REVIEW'))",
+    "semantic_reason_code": "TEXT",
+    "semantic_audit_version": "TEXT",
 }
 
 
@@ -767,6 +853,13 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     for name, declaration in _GUTENBERG_BOOK_MIGRATIONS.items():
         if name not in gutenberg_columns:
             connection.execute(f"ALTER TABLE gutenberg_books ADD COLUMN {name} {declaration}")
+    provenance_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(quote_provenance)")
+    }
+    for name, declaration in _PROVENANCE_MIGRATIONS.items():
+        if name not in provenance_columns:
+            connection.execute(f"ALTER TABLE quote_provenance ADD COLUMN {name} {declaration}")
+    connection.executescript(_QUOTE_MINUTE_POOL_VIEW)
     connection.commit()
 
 
