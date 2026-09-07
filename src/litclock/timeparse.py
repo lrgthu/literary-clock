@@ -85,7 +85,7 @@ _RELATIVE_RE = re.compile(
 )
 _NUMERIC_RE = re.compile(
     rf"(?<![\w.])(?P<hour>\d{{1,2}})(?P<separator>[:.])(?P<minute>\d{{2}})"
-    rf"(?:\s*{_MERIDIEM_PATTERN})?(?![\w.])",
+    rf"(?:\s*{_MERIDIEM_PATTERN})?(?!\w)",
     re.IGNORECASE,
 )
 _MILITARY_RE = re.compile(r"(?<!\w)(?P<hour>\d{2})(?P<minute>\d{2})\s+hours?\b", re.IGNORECASE)
@@ -96,7 +96,7 @@ _OCLOCK_RE = re.compile(
 )
 _WRITTEN_CLOCK_RE = re.compile(
     rf"(?<!\w)(?P<hour>{_HOUR_PATTERN}){_WORD_SEPARATOR}+"
-    rf"(?P<minute>{_MINUTE_PATTERN})"
+    rf"(?P<minute>(?:oh{_WORD_SEPARATOR}+)?{_MINUTE_PATTERN})"
     rf"(?:\s*{_MERIDIEM_PATTERN})?(?!\w)",
     re.IGNORECASE,
 )
@@ -136,6 +136,8 @@ def _number(value: str) -> int | None:
     if normalized in _ONES:
         return _ONES[normalized]
     parts = normalized.split()
+    if len(parts) == 2 and parts[0] == "oh" and parts[1] in _ONES:
+        return _ONES[parts[1]]
     if len(parts) == 2 and parts[0] in _TENS and parts[1] in _ONES:
         return _TENS[parts[0]] + _ONES[parts[1]]
     if normalized in _TENS:
@@ -560,7 +562,23 @@ def _oclock_detection(text: str, match: re.Match[str]) -> TimeDetection:
 
 def _written_clock_detection(text: str, match: re.Match[str]) -> TimeDetection | None:
     before = text[max(0, match.start() - 18) : match.start()]
-    if not re.search(r"\b(?:at|by|until|exactly|struck|was)\s*$", before, re.IGNORECASE):
+    after = text[match.end() : min(len(text), match.end() + 40)]
+    if re.match(r"\s*[-\u2010-\u2015]\s*(?:minutes?|hours?)\b", after, re.IGNORECASE):
+        return TimeDetection(
+            match.start(),
+            match.end(),
+            match.group(),
+            None,
+            TimeConfidence.INVALID,
+            "written_clock",
+            rejection_reason="hyphenated duration is not a clock time",
+        )
+    if not re.search(
+        r"\b(?:at|by|until|exactly|struck|was|is|read|reads|said|says|showed|"
+        r"displayed|indicated)\s*$",
+        before,
+        re.IGNORECASE,
+    ):
         return None
     hour = _number(match.group("hour"))
     minute = _number(match.group("minute"))
@@ -696,7 +714,7 @@ def false_positive_category(text: str, detection: TimeDetection) -> str | None:
     before = text[max(0, detection.start - 100) : detection.start]
     after = text[detection.end : min(len(text), detection.end + 100)]
     if re.search(
-        rf"(?:\b(?:chapter|chap\.?|verse|verses|{_SCRIPTURE_NAMES})[,;:]?\s+"
+        rf"(?:\b(?:chapter|chap\.?|verse|verses|act|scene|book|{_SCRIPTURE_NAMES})[,;:]?\s+"
         rf"|\b(?:{_SCRIPTURE_ABBREVIATIONS})\.?\s+"
         r"|\b(?:i|ii|iii|iv|1|2|3)\s+(?:john|peter|samuel|kings|chronicles|"
         rf"corinthians|thessalonians|timothy|{_SCRIPTURE_ABBREVIATIONS})\.?\s+)$",

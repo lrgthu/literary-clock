@@ -127,6 +127,46 @@ def test_unmatched_prose_quote_does_not_consume_following_pipe_record(tmp_path: 
         connection.close()
 
 
+def test_legacy_importer_quarantines_duration_that_looks_like_written_clock(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "duration.csv"
+    _write_rows(
+        source,
+        [
+            [
+                "01:05",
+                "one five",
+                "There was one five-minute interval.",
+                "Duration Book",
+                "A. Writer",
+            ]
+        ],
+    )
+    database = tmp_path / "corpus.sqlite3"
+    summary = import_corpora(database, [source_spec(source)])
+    assert summary.canonical_quotes == 1
+    connection = connect_database(database)
+    try:
+        quote = connection.execute("SELECT id, quality_status FROM quotes").fetchone()
+        assert quote["quality_status"] == "AMBIGUOUS"
+        assert connection.execute("SELECT COUNT(*) FROM quote_minute_pool").fetchone()[0] == 0
+        provenance = connection.execute(
+            """
+            SELECT semantic_class, semantic_action, semantic_reason_code
+            FROM quote_provenance WHERE quote_id = ?
+            """,
+            (quote["id"],),
+        ).fetchone()
+        assert tuple(provenance) == (
+            "DURATION",
+            "QUARANTINE",
+            "DURATION_HYPHENATED",
+        )
+    finally:
+        connection.close()
+
+
 def test_checksum_mismatch_aborts_without_overwriting_existing_database(tmp_path: Path) -> None:
     source = tmp_path / "source.csv"
     _write_rows(source, [["12:00", "noon", "At noon.", "Book", "Author"]])
