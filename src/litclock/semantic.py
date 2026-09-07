@@ -840,8 +840,12 @@ def _negative_decision(
 
     if not colon:
         return None
-    if re.search(r"\b(?:between|from)\s*$", before, re.I) or re.match(
-        r"\s*(?:-|–|—|to|through|and)\s*\d{1,2}(?::|\.)\d{2}", after, re.I
+    clock_transition = bool(
+        re.search(r"\bclock\s+(?:changing|changed|turning)\s+from\s*$", before, re.I)
+    )
+    if not clock_transition and (
+        re.search(r"\b(?:between|from)\s*$", before, re.I)
+        or re.match(r"\s*(?:-|–|—|to|through|and)\s*\d{1,2}(?::|\.)\d{2}", after, re.I)
     ):
         return SemanticDecision(
             SemanticClass.UNKNOWN,

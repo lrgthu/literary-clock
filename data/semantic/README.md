@@ -15,3 +15,18 @@ semantic grammar before `semantic-apply` can expose them through `quote_minute_p
 
 Large detailed audit CSVs and SQLite databases remain under ignored `data/generated/` paths and
 are not published with the repository.
+
+`english_v1_final_recovery.tsv` is the bounded final-tail inventory applied after semantic v2.
+It contains only the 47 source-backed quotations needed to eliminate empty and renderer-safe
+singleton minute pools. Each of its 50 relationships is reclassified by semantic v2 during
+materialization; the recovery layer cannot bypass a non-`KEEP` decision. Apply it to a semantic-v2
+database with:
+
+```bash
+uv run python -m litclock.final_recovery \
+  --db data/generated/litclock.english-v1-frozen.sqlite3 \
+  --input data/semantic/english_v1_final_recovery.tsv
+```
+
+The generated SQLite database remains ignored. The committed TSV, semantic v2 rules, and v2
+adjudications are the reproducible English V1 freeze inputs.
