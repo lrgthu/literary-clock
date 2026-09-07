@@ -54,6 +54,10 @@ from litclock.render.profiles import get_device_profile
 from litclock.render.suitability import is_renderable_for_device
 from litclock.render.typography import FontSelection, discover_font, discover_time_font
 from litclock.selector import NoQuoteAvailable, QuoteSelector
+from litclock.semantic_adjudication import (
+    run_semantic_adjudication,
+    write_semantic_adjudication_report,
+)
 from litclock.semantic_audit import (
     apply_semantic_audit,
     run_semantic_audit,
@@ -357,6 +361,38 @@ def build_parser() -> argparse.ArgumentParser:
         "--report",
         type=Path,
         default=PROJECT_ROOT / "docs" / "reports" / "CORPUS_SEMANTIC_REVALIDATION_REPORT.md",
+    )
+    semantic_adjudicate_parser = commands.add_parser(
+        "semantic-adjudicate",
+        help="run semantic v2 adjudication and stage validated existing-corpus repairs",
+    )
+    _database_argument(semantic_adjudicate_parser)
+    semantic_adjudicate_parser.add_argument("--prior-run-id", type=int)
+    semantic_adjudicate_parser.add_argument(
+        "--manual",
+        type=Path,
+        default=PROJECT_ROOT / "data" / "semantic" / "english_v2_manual_adjudications.tsv",
+    )
+    semantic_adjudication_report_parser = commands.add_parser(
+        "semantic-adjudication-report",
+        help="write v2 adjudication transitions, repairs, targets, and final report",
+    )
+    _database_argument(semantic_adjudication_report_parser)
+    semantic_adjudication_report_parser.add_argument("--run-id", type=int)
+    semantic_adjudication_report_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-adjudication",
+    )
+    semantic_adjudication_report_parser.add_argument(
+        "--renderer-audit",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-adjudication" / "renderer_audit.json",
+    )
+    semantic_adjudication_report_parser.add_argument(
+        "--report",
+        type=Path,
+        default=PROJECT_ROOT / "docs" / "reports" / "CORPUS_SEMANTIC_ADJUDICATION_REPORT.md",
     )
 
     mine_parser = commands.add_parser(
@@ -771,6 +807,43 @@ def main(argv: Sequence[str] | None = None) -> int:
             finally:
                 connection.close()
             print(json.dumps({**result, "artifacts": artifacts}, indent=2))
+        elif args.command == "semantic-adjudicate":
+            connection = connect_database(args.db)
+            try:
+                result = run_semantic_adjudication(
+                    connection,
+                    prior_run_id=args.prior_run_id,
+                    manual_path=args.manual,
+                )
+            finally:
+                connection.close()
+            print(json.dumps(result, indent=2))
+        elif args.command == "semantic-adjudication-report":
+            connection = connect_database(args.db)
+            try:
+                initialize_database(connection)
+                run_id = args.run_id
+                if run_id is None:
+                    row = connection.execute(
+                        """
+                        SELECT id FROM semantic_audit_runs
+                        WHERE audit_version = 'english-clock-semantics-v2'
+                        ORDER BY id DESC LIMIT 1
+                        """
+                    ).fetchone()
+                    if row is None:
+                        raise ValueError("no semantic v2 adjudication run exists")
+                    run_id = int(row["id"])
+                result = write_semantic_adjudication_report(
+                    connection,
+                    run_id,
+                    args.report,
+                    args.output_dir,
+                    renderer_audit_path=args.renderer_audit,
+                )
+            finally:
+                connection.close()
+            print(json.dumps(result, indent=2))
         elif args.command == "render-qa":
             connection = connect_database(args.db)
             try:

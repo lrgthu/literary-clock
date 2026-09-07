@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS semantic_time_audit (
     confidence TEXT NOT NULL,
     highlighted_text TEXT NOT NULL,
     derived_minutes TEXT NOT NULL,
+    derivation_rule TEXT,
     source_family TEXT NOT NULL,
     source_candidate_type TEXT,
     source_candidate_id INTEGER,
@@ -167,6 +168,71 @@ CREATE INDEX IF NOT EXISTS semantic_time_audit_relationship_idx
     ON semantic_time_audit(quote_id, minute_of_day, run_id);
 CREATE INDEX IF NOT EXISTS semantic_time_audit_decision_idx
     ON semantic_time_audit(run_id, action, semantic_class, reason_code);
+
+CREATE TABLE IF NOT EXISTS semantic_adjudications (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES semantic_audit_runs(id) ON DELETE CASCADE,
+    prior_run_id INTEGER NOT NULL REFERENCES semantic_audit_runs(id),
+    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    original_minute INTEGER NOT NULL CHECK (original_minute BETWEEN 0 AND 1439),
+    prior_action TEXT NOT NULL CHECK (prior_action IN ('KEEP', 'QUARANTINE', 'REVIEW')),
+    prior_reason_code TEXT NOT NULL,
+    adjudication_action TEXT NOT NULL CHECK (
+        adjudication_action IN (
+            'KEEP_AS_IS', 'QUARANTINE', 'REPAIR_MINUTE', 'REPAIR_HIGHLIGHT',
+            'REPAIR_MINUTE_AND_HIGHLIGHT', 'REVIEW'
+        )
+    ),
+    mismatch_disposition TEXT CHECK (
+        mismatch_disposition IS NULL OR mismatch_disposition IN (
+            'NON_CLOCK', 'WRONG_MINUTE_LABEL', 'WRONG_CLOCKFACE_SIDE',
+            'WRONG_HIGHLIGHT', 'PARSER_LIMITATION', 'UNRESOLVED'
+        )
+    ),
+    corrected_minutes TEXT NOT NULL DEFAULT '',
+    original_highlight_start INTEGER,
+    original_highlight_end INTEGER,
+    original_highlight_text TEXT NOT NULL,
+    original_time_text TEXT,
+    corrected_highlight_start INTEGER,
+    corrected_highlight_end INTEGER,
+    corrected_highlight_text TEXT,
+    evidence_code TEXT NOT NULL,
+    evidence_text TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,
+    review_provenance TEXT NOT NULL,
+    adjudication_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (run_id, quote_id, original_minute)
+);
+
+CREATE INDEX IF NOT EXISTS semantic_adjudications_decision_idx
+    ON semantic_adjudications(run_id, adjudication_action, mismatch_disposition);
+
+CREATE TABLE IF NOT EXISTS semantic_relationship_repairs (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES semantic_audit_runs(id) ON DELETE CASCADE,
+    adjudication_id INTEGER NOT NULL REFERENCES semantic_adjudications(id) ON DELETE CASCADE,
+    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    original_minute INTEGER NOT NULL CHECK (original_minute BETWEEN 0 AND 1439),
+    repaired_minute INTEGER NOT NULL CHECK (repaired_minute BETWEEN 0 AND 1439),
+    eligibility_type TEXT NOT NULL,
+    confidence TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    evidence_text TEXT NOT NULL,
+    corrected_highlight_start INTEGER,
+    corrected_highlight_end INTEGER,
+    corrected_highlight_text TEXT,
+    semantic_class TEXT NOT NULL,
+    semantic_action TEXT NOT NULL CHECK (semantic_action = 'KEEP'),
+    semantic_reason_code TEXT NOT NULL,
+    validation_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (run_id, quote_id, repaired_minute)
+);
+
+CREATE INDEX IF NOT EXISTS semantic_relationship_repairs_minute_idx
+    ON semantic_relationship_repairs(run_id, repaired_minute, quote_id);
 
 CREATE TRIGGER IF NOT EXISTS quotes_default_minute_eligibility
 AFTER INSERT ON quotes
@@ -803,6 +869,24 @@ WHERE q.quality_status IN ('VERIFIED_EXACT', 'VERIFIED_NORMALIZED')
             AND audit.minute_of_day = q.minute_of_day
             AND audit.action = 'KEEP'
       )
+  )
+UNION ALL
+SELECT repair.quote_id, repair.repaired_minute, repair.eligibility_type, repair.confidence,
+       repair.evidence_type, repair.evidence_text, NULL, NULL
+FROM semantic_relationship_repairs AS repair
+JOIN semantic_audit_runs AS run ON run.id = repair.run_id
+WHERE run.status = 'APPLIED'
+  AND repair.semantic_action = 'KEEP'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM quote_minute_eligibility AS eligibility
+      JOIN semantic_time_audit AS audit
+        ON audit.run_id = repair.run_id
+       AND audit.quote_id = eligibility.quote_id
+       AND audit.minute_of_day = eligibility.minute_of_day
+       AND audit.action = 'KEEP'
+      WHERE eligibility.quote_id = repair.quote_id
+        AND eligibility.minute_of_day = repair.repaired_minute
   );
 """
 
@@ -826,6 +910,14 @@ _PROVENANCE_MIGRATIONS = {
     "semantic_action": "TEXT CHECK (semantic_action IN ('KEEP', 'QUARANTINE', 'REVIEW'))",
     "semantic_reason_code": "TEXT",
     "semantic_audit_version": "TEXT",
+}
+
+_SEMANTIC_AUDIT_MIGRATIONS = {
+    "derivation_rule": "TEXT",
+}
+
+_SEMANTIC_ADJUDICATION_MIGRATIONS = {
+    "original_time_text": "TEXT",
 }
 
 
@@ -859,6 +951,20 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     for name, declaration in _PROVENANCE_MIGRATIONS.items():
         if name not in provenance_columns:
             connection.execute(f"ALTER TABLE quote_provenance ADD COLUMN {name} {declaration}")
+    semantic_audit_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(semantic_time_audit)")
+    }
+    for name, declaration in _SEMANTIC_AUDIT_MIGRATIONS.items():
+        if name not in semantic_audit_columns:
+            connection.execute(f"ALTER TABLE semantic_time_audit ADD COLUMN {name} {declaration}")
+    semantic_adjudication_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(semantic_adjudications)")
+    }
+    for name, declaration in _SEMANTIC_ADJUDICATION_MIGRATIONS.items():
+        if name not in semantic_adjudication_columns:
+            connection.execute(
+                f"ALTER TABLE semantic_adjudications ADD COLUMN {name} {declaration}"
+            )
     connection.executescript(_QUOTE_MINUTE_POOL_VIEW)
     connection.commit()
 

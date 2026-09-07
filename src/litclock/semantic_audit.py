@@ -35,6 +35,9 @@ class SourceContext:
     parser_route: str
     source_section: str | None
     source_locator: str | None
+    previous_paragraph: str | None = None
+    containing_paragraph: str | None = None
+    following_paragraph: str | None = None
 
 
 def _now() -> str:
@@ -116,21 +119,25 @@ def _candidate_contexts(
         (
             "STANDARD_EBOOKS",
             """
-            SELECT imported_quote_id, id, parser_rule, source_section, source_locator
+            SELECT imported_quote_id, id, parser_rule, source_section, source_locator,
+                   NULL AS previous_paragraph, quote AS containing_paragraph,
+                   NULL AS following_paragraph
             FROM mined_candidates WHERE imported_quote_id IS NOT NULL
             """,
         ),
         (
             "GUTENBERG",
             """
-            SELECT imported_quote_id, id, parser_rule, NULL AS source_section, source_locator
+            SELECT imported_quote_id, id, parser_rule, NULL AS source_section, source_locator,
+                   previous_paragraph, containing_paragraph, following_paragraph
             FROM gutenberg_candidates WHERE imported_quote_id IS NOT NULL
             """,
         ),
         (
             "WIKISOURCE",
             """
-            SELECT imported_quote_id, id, parser_rule, page_title AS source_section, source_locator
+            SELECT imported_quote_id, id, parser_rule, page_title AS source_section, source_locator,
+                   previous_paragraph, containing_paragraph, following_paragraph
             FROM wikisource_candidates WHERE imported_quote_id IS NOT NULL
             """,
         ),
@@ -146,6 +153,9 @@ def _candidate_contexts(
                 str(row["parser_rule"]),
                 row["source_section"],
                 row["source_locator"],
+                row["previous_paragraph"],
+                row["containing_paragraph"],
+                row["following_paragraph"],
             )
             by_candidate[(family, candidate_id)] = context
             by_quote_family.setdefault((quote_id, family), context)
@@ -182,6 +192,25 @@ def _context_for_row(
         None,
         None,
     )
+
+
+def _source_expression_window(source: SourceContext, phrase: str) -> tuple[str | None, str | None]:
+    """Return only source context demonstrably attached to the same expression."""
+    needle = phrase.casefold().replace("’", "'")
+    for paragraph in (
+        source.previous_paragraph,
+        source.containing_paragraph,
+        source.following_paragraph,
+    ):
+        if not paragraph:
+            continue
+        comparable = paragraph.casefold().replace("’", "'")
+        index = comparable.find(needle)
+        if index >= 0:
+            return paragraph[max(0, index - 180) : index], paragraph[
+                index + len(phrase) : index + len(phrase) + 180
+            ]
+    return None, None
 
 
 def _fingerprint(rows: Iterable[sqlite3.Row]) -> str:
@@ -301,6 +330,7 @@ def run_semantic_audit(
         for row in rows:
             source = _context_for_row(row, contexts)
             phrase = str(row["time_text"])
+            source_before, source_after = _source_expression_window(source, phrase)
             parser_route = _parser_family(source.parser_route, phrase)
             decision = classify_clock_relationship(
                 str(row["quote"]),
@@ -311,6 +341,8 @@ def run_semantic_audit(
                 parser_route=parser_route,
                 source_section=source.source_section,
                 source_locator=source.source_locator,
+                source_context_before=source_before,
+                source_context_after=source_after,
             )
             highlighted = (
                 str(row["quote"])[int(row["highlight_start"]) : int(row["highlight_end"])]
@@ -325,9 +357,9 @@ def run_semantic_audit(
                 INSERT INTO semantic_time_audit (
                     run_id, quote_id, minute_of_day, semantic_class, action, reason_code,
                     parser_route, confidence, highlighted_text, derived_minutes, source_family,
-                    source_candidate_type, source_candidate_id, source_structure,
+                    derivation_rule, source_candidate_type, source_candidate_id, source_structure,
                     reviewed_by, review_provenance, audit_version, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
                 """,
                 (
                     run_id,
@@ -341,6 +373,7 @@ def run_semantic_audit(
                     highlighted,
                     ",".join(str(value) for value in decision.derived_minutes),
                     source.family,
+                    decision.derivation_rule,
                     source.candidate_type,
                     source.candidate_id,
                     structure or None,
@@ -383,7 +416,7 @@ def apply_semantic_audit(connection: sqlite3.Connection, run_id: int) -> dict[st
     """Activate a complete audit atomically; source/canonical rows remain untouched."""
     initialize_database(connection)
     run = connection.execute("SELECT * FROM semantic_audit_runs WHERE id = ?", (run_id,)).fetchone()
-    if run is None or run["status"] not in {"AUDIT_COMPLETE", "APPLIED"}:
+    if run is None or run["status"] not in {"AUDIT_COMPLETE", "APPLIED", "SUPERSEDED"}:
         raise ValueError("semantic audit run is not complete")
     expected = int(json.loads(run["baseline_json"])["relationships"])
     actual = int(
@@ -393,7 +426,80 @@ def apply_semantic_audit(connection: sqlite3.Connection, run_id: int) -> dict[st
     )
     if actual != expected:
         raise ValueError(f"audit accounting mismatch: expected {expected}, found {actual}")
+    repaired = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM semantic_relationship_repairs WHERE run_id = ?", (run_id,)
+        ).fetchone()[0]
+    )
+    invalid_repairs = int(
+        connection.execute(
+            """
+            SELECT COUNT(*) FROM semantic_relationship_repairs
+            WHERE run_id = ? AND semantic_action != 'KEEP'
+            """,
+            (run_id,),
+        ).fetchone()[0]
+    )
+    if invalid_repairs:
+        raise ValueError("semantic audit contains a non-KEEP repair")
     with connection:
+        previous = connection.execute(
+            "SELECT id FROM semantic_audit_runs WHERE status = 'APPLIED' AND id != ?", (run_id,)
+        ).fetchone()
+        if previous is not None:
+            for repair in connection.execute(
+                """
+                SELECT DISTINCT quote_id, original_highlight_start, original_highlight_end,
+                       original_highlight_text, original_time_text
+                FROM semantic_adjudications
+                WHERE run_id = ? AND corrected_highlight_text IS NOT NULL
+                """,
+                (int(previous["id"]),),
+            ):
+                connection.execute(
+                    """
+                    UPDATE quotes SET time_text = ?, highlight_start = ?, highlight_end = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        repair["original_time_text"] or repair["original_highlight_text"],
+                        repair["original_highlight_start"],
+                        repair["original_highlight_end"],
+                        repair["quote_id"],
+                    ),
+                )
+        corrected_by_quote: dict[int, tuple[int, int, str]] = {}
+        for repair in connection.execute(
+            """
+            SELECT DISTINCT quote_id, corrected_highlight_start, corrected_highlight_end,
+                   corrected_highlight_text
+            FROM semantic_adjudications
+            WHERE run_id = ? AND corrected_highlight_text IS NOT NULL
+            """,
+            (run_id,),
+        ):
+            quote_id = int(repair["quote_id"])
+            value = (
+                int(repair["corrected_highlight_start"]),
+                int(repair["corrected_highlight_end"]),
+                str(repair["corrected_highlight_text"]),
+            )
+            if quote_id in corrected_by_quote and corrected_by_quote[quote_id] != value:
+                raise ValueError(f"conflicting highlight repairs for quote {quote_id}")
+            corrected_by_quote[quote_id] = value
+        for quote_id, (start, end, text_value) in corrected_by_quote.items():
+            quote = connection.execute(
+                "SELECT quote FROM quotes WHERE id = ?", (quote_id,)
+            ).fetchone()
+            if quote is None or str(quote["quote"])[start:end] != text_value:
+                raise ValueError(f"invalid materialized highlight repair for quote {quote_id}")
+            connection.execute(
+                """
+                UPDATE quotes SET time_text = ?, highlight_start = ?, highlight_end = ?
+                WHERE id = ?
+                """,
+                (text_value, start, end, quote_id),
+            )
         connection.execute(
             """
             UPDATE semantic_audit_runs SET status = 'SUPERSEDED'
@@ -409,7 +515,13 @@ def apply_semantic_audit(connection: sqlite3.Connection, run_id: int) -> dict[st
         connection.execute(
             "UPDATE semantic_audit_runs SET after_json = ? WHERE id = ?", (_json(after), run_id)
         )
-    return {"run_id": run_id, "before": json.loads(run["baseline_json"]), "after": after}
+    return {
+        "run_id": run_id,
+        "before": json.loads(run["baseline_json"]),
+        "after": after,
+        "repaired_relationships": repaired,
+        "repaired_highlights": len(corrected_by_quote),
+    }
 
 
 def _audit_export_rows(connection: sqlite3.Connection, run_id: int) -> list[dict[str, Any]]:
