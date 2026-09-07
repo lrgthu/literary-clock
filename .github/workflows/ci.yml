@@ -14,6 +14,12 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - run: uv sync
-      - run: uv run pytest
+      - run: make -C kindle/native host
+      - run: make -C kindle/native test
+      - run: make -C kindle/native sanitize
+      - run: >-
+          LITCLOCK_NATIVE_BIN=kindle/native/build/sanitize/litclock-native
+          uv run pytest tests/test_native_runtime.py
+      - run: uv run pytest --ignore=tests/test_native_runtime.py
       - run: uv run ruff check .
       - run: uv run ruff format --check .
