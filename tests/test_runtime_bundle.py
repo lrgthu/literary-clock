@@ -194,6 +194,41 @@ def test_deploy_is_staged_and_rollback_swaps_version(tmp_path: Path) -> None:
     assert (runtime / "previous-release").read_text().strip() == "v2"
 
 
+def test_native_release_packages_binary_and_preserves_shell_fallback(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    native = tmp_path / "litclock-native"
+    mount.mkdir()
+    native.write_bytes(b"native-test-binary")
+    native.chmod(0o755)
+    _bundle(source, version="native-v1")
+
+    deploy_bundle(
+        source,
+        mount,
+        project,
+        require_kindle=False,
+        native_binary=native,
+    )
+    release = mount / "literary-clock/runtime/releases/native-v1"
+    metadata = dict(
+        line.split("\t", 1) for line in (release / "release.meta").read_text().splitlines()
+    )
+    inventory = (release / "checksums.sha256").read_text()
+
+    assert metadata["runtime_engine"] == "native"
+    assert metadata["architecture"] == "armv7-eabi5-hard-float-static"
+    assert metadata["native_binary_sha256"] == sha256_file(release / "bin/litclock-native")
+    assert "bin/litclock-native" in inventory
+    assert (release / "bin/literary-clock-runtime.sh").is_file()
+    assert validate_release(release) == "native-v1"
+
+    (release / "bin/litclock-native").write_bytes(b"corrupt-native")
+    with pytest.raises(DeploymentError, match="native runtime digest mismatch"):
+        validate_release(release)
+
+
 def test_boot_hook_is_explicit_reversible_and_uses_active_release(tmp_path: Path) -> None:
     project = Path(__file__).resolve().parents[1]
     source = tmp_path / "source"

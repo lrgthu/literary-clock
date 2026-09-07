@@ -581,11 +581,12 @@ uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --rollback
 
 The deployer verifies source and copied assets, available storage, dimensions, crisp 1-bit mode,
 and SHA-256 values before atomically switching the `current-release` pointer. The Kindle runtime
-uses POSIX shell, BusyBox, FBInk, and an optional official KindleCron binary; it captures epoch,
-calendar date, and minute in one local `date` call and contains no timezone database. History is
-committed only after FBInk returns success. Code, assets, release metadata, and the controlled
-one-shot reboot helper share one checksummed release, so rollback cannot combine new runtime code
-with old manifest data.
+uses a static ARMv7 C one-shot engine, POSIX-shell service/recovery helpers, FBInk, and an optional
+official KindleCron binary. It captures epoch, calendar date, and minute from one Kindle-local
+timestamp and contains no timezone database. History is committed only after FBInk returns success.
+The shell engine remains a state-compatible fallback. Code, assets, release metadata, and the
+controlled one-shot reboot helper share one checksummed release, so rollback cannot combine new
+runtime code with old manifest data.
 
 The bounded pilot changed frames autonomously across eight consecutive local minutes and followed
 a user-initiated one-hour Kindle timezone change without a Mac, network, configuration change, or
@@ -630,3 +631,5 @@ virtual environment, caches, and local scratch corpus are ignored rather than co
 - Phase 4B.1 — bounded offline Kindle runtime pilot, transactional history, and local-time test.
 - Phase 4B.2 — measured exact/eco power behavior, release integrity, reversible startup, and bounded
   reboot recovery; indefinite 24/7 activation remains an explicit post-test decision.
+- Phase 4C — static ARMv7 native one-shot runtime, checksummed engine selection, and preserved shell
+  fallback on the frozen English V1 bundle.

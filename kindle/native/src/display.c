@@ -39,6 +39,7 @@ int lc_display_frame(
     char *error
 ) {
     pid_t child;
+    struct stat details;
     int status;
     char x_text[16];
     char y_text[16];
@@ -56,8 +57,8 @@ int lc_display_frame(
         }
         return options->fake_display_status;
     }
-    if (access(options->display_helper, X_OK) != 0) {
-        lc_set_error(error, "display helper is not executable: %s", options->display_helper);
+    if (stat(options->display_helper, &details) != 0 || !S_ISREG(details.st_mode)) {
+        lc_set_error(error, "display helper is missing: %s", options->display_helper);
         return 5;
     }
     (void)snprintf(x_text, sizeof(x_text), "%d", date_x);

@@ -1,8 +1,10 @@
-# Literary Clock native runtime scaffold
+# Literary Clock native runtime
 
-This subtree ports the one-shot Phase 4B.2 shell transaction to small C11 modules. The shell
-runtime remains the behavioral oracle and recovery implementation. Nothing here installs or
-activates the native binary on a Kindle.
+This subtree implements the one-shot Phase 4B.2 transaction in small C11 modules. The shell
+runtime remains the behavioral oracle and recovery implementation. A release may select the native
+engine with `runtime_engine\tnative` in `release.meta`; the stable launcher dispatches to the
+checksummed `bin/litclock-native` from that same release. Setting
+`LITCLOCK_RUNTIME_ENGINE=shell` is the explicit state-preserving fallback.
 
 ```sh
 make host
@@ -29,4 +31,5 @@ already-proven FBInk command sequence. `--dry-run` validates and reports a selec
 or state mutation. `--version` reports the runtime and supported format versions.
 
 See [the Phase 4C scaffold report](../../docs/reports/PHASE4C_NATIVE_RUNTIME_SCAFFOLD.md) for the
-target audit, parity evidence, and exact handoff after corpus freeze.
+design and parity evidence, and the [Phase 4C final report](../../docs/reports/PHASE4C_NATIVE_RUNTIME_FINAL.md)
+for the frozen release and physical PW4 cutover evidence.

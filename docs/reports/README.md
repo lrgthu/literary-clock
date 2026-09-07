@@ -19,6 +19,10 @@ separates its successful autonomy/time-jump evidence from the still-unproven 24/
 lifecycle. Earlier reports document how the corpus progressed through normalization,
 public-domain mining, clock-face eligibility, and sparse-tail recovery.
 
+`PHASE4C_NATIVE_RUNTIME_SCAFFOLD.md` records the C design and commit-tied differential evidence.
+`PHASE4C_NATIVE_RUNTIME_FINAL.md` records the frozen English V1 release, static ARMv7 artifact, and
+physical PW4 native-engine cutover.
+
 `PHASE3_RENDER_REPORT.md` is the historical pre-finalization renderer report; it records the
 long-quote/data-handoff failure that the finalization pass later traced and fixed. Use
 `PHASE3_RENDER_FINALIZATION_REPORT.md`, `PHASE3_1_CLEANUP_REPORT.md`,

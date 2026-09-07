@@ -16,6 +16,30 @@ lock_dir=$state_dir/run.lock
 full_refresh_interval=${LITCLOCK_FULL_REFRESH_INTERVAL:-15}
 scheduler_source=${LITCLOCK_SCHEDULER_SOURCE:-manual}
 
+# New native releases dispatch here so the stable current-release launcher and
+# scheduler lifecycle remain unchanged.  LITCLOCK_RUNTIME_ENGINE=shell is the
+# explicit, state-preserving recovery switch.
+runtime_engine=${LITCLOCK_RUNTIME_ENGINE:-}
+if test -z "$runtime_engine" && test -r "$release_meta"; then
+    runtime_engine=$(awk -F '\t' '$1 == "runtime_engine" { print $2; exit }' "$release_meta")
+fi
+if test -z "$runtime_engine"; then runtime_engine=shell; fi
+case "$runtime_engine" in
+    native)
+        native_runtime=$release_root/bin/litclock-native
+        test -x "$native_runtime" || {
+            echo "Literary Clock native runtime is missing" >&2
+            exit 24
+        }
+        exec "$native_runtime" "$@"
+        ;;
+    shell) ;;
+    *)
+        echo "Literary Clock runtime engine is invalid: $runtime_engine" >&2
+        exit 24
+        ;;
+esac
+
 clock_ms() {
     if test -r /proc/uptime; then
         awk '{ printf "%.0f\n", $1 * 1000 }' /proc/uptime

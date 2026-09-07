@@ -47,6 +47,9 @@ STABLE_LAUNCHERS = {
     ),
 }
 BOOT_HOOK_SOURCE = Path("kindle/runtime/literary-clock-boot-once.sh")
+NATIVE_RUNTIME_NAME = "litclock-native"
+NATIVE_RUNTIME_VERSION = "0.1.0-scaffold"
+NATIVE_ARCHITECTURE = "armv7-eabi5-hard-float-static"
 
 
 class DeploymentError(RuntimeError):
@@ -89,7 +92,20 @@ def _bundle_allowlist(source: Path) -> set[str]:
     }
 
 
-def _write_release_metadata(root: Path, version: str, corpus_fingerprint: str) -> None:
+def _write_release_metadata(
+    root: Path,
+    version: str,
+    corpus_fingerprint: str,
+    native_binary: Path | None,
+) -> None:
+    native_metadata: tuple[str, ...] = ()
+    if native_binary is not None:
+        native_metadata = (
+            "runtime_engine\tnative\n",
+            f"native_runtime_version\t{NATIVE_RUNTIME_VERSION}\n",
+            f"native_binary_sha256\t{sha256_file(native_binary)}\n",
+            f"architecture\t{NATIVE_ARCHITECTURE}\n",
+        )
     (root / "release.meta").write_text(
         "".join(
             (
@@ -98,6 +114,7 @@ def _write_release_metadata(root: Path, version: str, corpus_fingerprint: str) -
                 f"release_version\t{version}\n",
                 "renderer_preset\tpw4-v1\n",
                 f"corpus_fingerprint\t{corpus_fingerprint}\n",
+                *(native_metadata or ("runtime_engine\tshell\n",)),
             )
         ),
         encoding="utf-8",
@@ -164,6 +181,19 @@ def validate_release(root: Path, *, verify_checksums: bool = True) -> str:
         script = root / "bin" / name
         if not script.is_file() or script.stat().st_size <= 0:
             raise DeploymentError(f"release runtime is missing: {name}")
+    engine = metadata.get("runtime_engine", "shell")
+    if engine not in {"native", "shell"}:
+        raise DeploymentError("invalid runtime_engine")
+    if engine == "native":
+        native = root / "bin" / NATIVE_RUNTIME_NAME
+        if not native.is_file() or native.stat().st_size <= 0:
+            raise DeploymentError("native release runtime is missing")
+        if metadata.get("native_runtime_version") != NATIVE_RUNTIME_VERSION:
+            raise DeploymentError("native runtime version mismatch")
+        if metadata.get("architecture") != NATIVE_ARCHITECTURE:
+            raise DeploymentError("native runtime architecture mismatch")
+        if metadata.get("native_binary_sha256") != sha256_file(native):
+            raise DeploymentError("native runtime digest mismatch")
     checksums = root / "checksums.sha256"
     if not checksums.is_file():
         raise DeploymentError("release checksum inventory is missing")
@@ -200,7 +230,11 @@ def _install_launchers(runtime_root: Path, project_root: Path) -> None:
         source = project_root / relative
         target = runtime_root / name
         if target.is_file():
-            if sha256_file(target) != sha256_file(source):
+            same_script = (
+                target.read_text(encoding="utf-8").rstrip()
+                == source.read_text(encoding="utf-8").rstrip()
+            )
+            if not same_script:
                 raise DeploymentError(f"installed stable launcher differs: {name}")
             continue
         pending = runtime_root / f"{name}.new"
@@ -216,10 +250,15 @@ def deploy_bundle(
     *,
     require_kindle: bool = True,
     release_version: str | None = None,
+    native_binary: Path | None = None,
 ) -> str:
     """Stage, fully validate, and atomically activate matching code plus assets."""
     source = source.resolve()
     mount = mount.resolve()
+    if native_binary is not None:
+        native_binary = native_binary.resolve()
+        if not native_binary.is_file() or native_binary.stat().st_size <= 0:
+            raise DeploymentError(f"native runtime binary is missing: {native_binary}")
     if require_kindle and not (mount / "system").is_dir():
         raise DeploymentError(f"target does not look like USB-visible Kindle storage: {mount}")
     manifest = read_manifest(source)
@@ -254,6 +293,11 @@ def deploy_bundle(
         target = binary_dir / name
         shutil.copyfile(source_script, target)
         target.chmod(0o755)
+    staged_native: Path | None = None
+    if native_binary is not None:
+        staged_native = binary_dir / NATIVE_RUNTIME_NAME
+        shutil.copyfile(native_binary, staged_native)
+        staged_native.chmod(0o755)
     boot_dir = staging / "boot"
     boot_dir.mkdir()
     shutil.copyfile(project_root / BOOT_HOOK_SOURCE, boot_dir / "emergency.sh")
@@ -262,6 +306,7 @@ def deploy_bundle(
         staging,
         version,
         manifest.metadata.get("corpus_fingerprint", ""),
+        staged_native,
     )
     _remove_appledouble(staging)
     _write_release_checksums(staging)

@@ -29,6 +29,7 @@ from litclock.runtime_bundle import (
     BundleManifest,
     DateAssetRecord,
     QuoteAssetRecord,
+    read_manifest,
     sha256_file,
     stable_identity,
     validate_manifest,
@@ -129,6 +130,25 @@ def _corpus_fingerprint(pools: dict[int, list[int]], quotes: dict[int, Quote]) -
     for quote_id, quote in sorted(quotes.items()):
         digest.update(f"q{quote_id}:{quote.normalized_quote_hash}\n".encode())
     return digest.hexdigest()
+
+
+def _active_semantic_fingerprint(connection: sqlite3.Connection) -> str | None:
+    """Return the frozen semantic fingerprint when the source DB provides one."""
+    try:
+        rows = connection.execute(
+            """
+            SELECT corpus_fingerprint
+            FROM semantic_audit_runs
+            WHERE status = 'APPLIED'
+            """
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    if not rows:
+        return None
+    if len(rows) != 1 or not rows[0]["corpus_fingerprint"]:
+        raise ValueError("source corpus must have exactly one fingerprinted applied audit")
+    return str(rows[0]["corpus_fingerprint"])
 
 
 def _date_key(value: date) -> str:
@@ -285,8 +305,29 @@ def build_pw4_bundle(
         raise ValueError(f"source corpus contains empty minute pools: {empty[:10]}")
     body_font, time_font = resolve_production_fonts()
     renderer = PillowRenderer(body_font, time_font=time_font)
+    cached_quote_ids: set[int] = set()
+    cached_manifest: BundleManifest | None = None
+    if incremental and (output / "bundle.meta").is_file():
+        try:
+            cached_manifest = read_manifest(output)
+        except (OSError, ValueError):
+            cached_manifest = None
+        if (
+            cached_manifest is not None
+            and cached_manifest.metadata.get("renderer_preset") == PW4_V1_RENDER_CONFIG.name
+        ):
+            cached_quote_ids = {
+                quote_id
+                for quote_id, record in cached_manifest.quotes.items()
+                if (output / record.frame).is_file()
+                and (output / record.frame).stat().st_size == record.byte_size
+                and sha256_file(output / record.frame) == record.checksum
+            }
     safe: dict[int, object] = {}
     for quote_id, quote in quotes.items():
+        if quote_id in cached_quote_ids:
+            safe[quote_id] = None
+            continue
         result = is_renderable_for_device(
             quote,
             PW4_V1_RENDER_CONFIG.profile,
@@ -306,13 +347,18 @@ def build_pw4_bundle(
         empty = [minute for minute, pool in safe_pools.items() if not pool]
         raise ValueError(f"renderability filtering empties minute pools: {empty[:10]}")
     referenced = sorted({quote_id for ids in safe_pools.values() for quote_id in ids})
-    fingerprint = _corpus_fingerprint(safe_pools, quotes)
+    fingerprint = _active_semantic_fingerprint(connection) or _corpus_fingerprint(
+        safe_pools, quotes
+    )
 
     sample_ids = _even_sample(referenced, max(1, min(sample_size, len(referenced))))
     sample_directory = tempfile.TemporaryDirectory(prefix="litclock-bundle-estimate-")
     sample_root = Path(sample_directory.name)
     sample_sizes: list[int] = []
     for quote_id in sample_ids:
+        if quote_id in cached_quote_ids and cached_manifest is not None:
+            sample_sizes.append(cached_manifest.quotes[quote_id].byte_size)
+            continue
         record = _render_quote_asset(
             sample_root,
             quotes[quote_id],

@@ -31,6 +31,12 @@ def main() -> int:
         "--release-version",
         help="versioned code+asset release name (defaults to the bundle asset-set version)",
     )
+    parser.add_argument(
+        "--native-binary",
+        type=Path,
+        default=PROJECT_ROOT / "kindle/native/build/armv7/litclock-native",
+        help="ARMv7 native runtime to package with a new release",
+    )
     args = parser.parse_args()
     if args.enable_boot_hook:
         result = set_boot_hook(args.mount, enabled=True)
@@ -47,6 +53,7 @@ def main() -> int:
             args.mount,
             PROJECT_ROOT,
             release_version=args.release_version,
+            native_binary=args.native_binary,
         )
         print(f"Activated Kindle bundle {version}")
     return 0
