@@ -43,6 +43,32 @@ quarantines:
 
 Problems remain auditable rather than being silently discarded.
 
+## Semantic clock-time revalidation
+
+Lexical shape and exact offsets do not prove time-of-day meaning. Every existing selectable English
+quote-minute relationship can therefore be passed through a second deterministic semantic gate.
+The gate uses these classes:
+
+- `CLOCK_TIME_EXACT` and `CLOCK_TIME_AMBIGUOUS`: the only production-selectable classes;
+- `DURATION` and `RELATIVE_DURATION`;
+- `SECTION_OR_REFERENCE` and `HEADING_OR_TOC`;
+- `SCORE_OR_RESULT` and `RATIO_OR_MEASUREMENT`;
+- `DATE_OR_NUMBER`, `NON_TEMPORAL_NUMBER`, and `UNKNOWN`.
+
+For example, `one five-minute interval` is a duration rather than 01:05, and `John 12:16` is a
+scripture reference rather than 12:16. Conversely, `At 12:16 he entered` has explicit clock-time
+context. A context-free bare `12:16` remains REVIEW; uncertainty never silently becomes KEEP.
+
+The claimed minute must be derivable from the highlighted phrase itself under an accepted grammar.
+Unrelated surrounding numbers cannot supply an hour or minute. The audit does not alter source
+text or highlight offsets.
+
+Decisions are stored per quote-minute relationship with an audit version, semantic class, action,
+reason code, parser family, confidence, and source/candidate context. Activation is reversible:
+QUARANTINE and REVIEW disappear only from the derived selection view, while canonical quotes,
+candidate rows, provenance, and the audit decision remain intact. This allows later human review
+or deterministic rule refinement without reconstructing lost records.
+
 ## Sources and licensing
 
 The local corpus was built from legacy Literary Clock datasets, Standard Ebooks source

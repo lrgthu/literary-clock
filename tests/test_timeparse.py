@@ -228,6 +228,35 @@ def test_24_hour_numeric_with_display_cue_is_exact() -> None:
     assert detection.confidence == TimeConfidence.EXACT_24H
 
 
+def test_sentence_final_colon_time_is_detected() -> None:
+    detection = _one("The clock showed 12:16.")
+    assert detection.text == "12:16"
+    assert detection.minute_of_day is None
+    assert detection.confidence == TimeConfidence.AMPM_AMBIGUOUS
+
+
+def test_written_clock_supports_oh_minutes() -> None:
+    detection = _one("At one oh five, the bell rang.")
+    assert detection.text == "one oh five"
+    assert detection.minute_of_day is None
+    assert detection.confidence == TimeConfidence.AMPM_AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "There was one five-minute interval.",
+        "There were two ten-minute pauses.",
+        "There were three twenty-minute delays.",
+    ],
+)
+def test_written_clock_does_not_cross_into_hyphenated_duration(text: str) -> None:
+    detection = _one(text)
+    assert detection.minute_of_day is None
+    assert detection.confidence == TimeConfidence.INVALID
+    assert detection.rejection_reason == "hyphenated duration is not a clock time"
+
+
 def test_sports_score_is_not_a_relative_clock_time() -> None:
     detection = _one("That afternoon they had us three to one in the ninth inning.")
     assert detection.minute_of_day is None

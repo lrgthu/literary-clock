@@ -26,6 +26,9 @@ MIT license.
 
 - `generated/litclock.sqlite3`: operational normalized corpus and selector state.
 - Coverage JSON/CSV, candidate audits, review queues, and mining statistics.
+- `generated/semantic-audit/`: complete relationship decisions, high-risk family extracts,
+  deterministic review samples, parser precision, and minute impact. These can contain copyrighted
+  quotation context and stay local.
 - `generated/render_previews/`: grayscale/1-bit frames and contact sheets.
 - `generated/pw4-*` and `generated/phase4b-*`: storage samples, versioned Kindle asset bundles,
   downloaded local scheduler releases, and physical-pilot evidence.
@@ -50,6 +53,18 @@ Later corpus stages use resumable commands documented in the root README. They d
 bulk sources and can require substantial disk, network, and processing time. The currently frozen
 V1 database incorporates completed Standard Ebooks, Project Gutenberg, and Wikisource phases; a
 fresh `litclock import` rebuilds Phase 1, not the already-mined final V1 state.
+
+To revalidate an existing full English production database without touching its active pool first:
+
+```bash
+uv run litclock semantic-audit --db data/generated/litclock.sqlite3
+uv run litclock semantic-report --run-id RUN_ID --db data/generated/litclock.sqlite3
+```
+
+After inspecting the local evidence, `litclock semantic-apply RUN_ID` atomically activates the
+versioned decisions. Canonical and provenance data remain in SQLite; only the derived selectable
+view changes. The committed aggregate snapshot is
+[`../docs/reports/CORPUS_SEMANTIC_REVALIDATION_REPORT.md`](../docs/reports/CORPUS_SEMANTIC_REVALIDATION_REPORT.md).
 
 Renderer QA requires an existing operational database:
 

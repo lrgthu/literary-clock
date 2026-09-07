@@ -8,6 +8,10 @@ Reports contain aggregate results and limited audit context. They are corpus-der
 relicensed as MIT; see [`../../NOTICE.md`](../../NOTICE.md). Machine-readable JSON/CSV and full
 review exports remain under ignored `data/generated/` in the local working tree.
 
+`CORPUS_SEMANTIC_REVALIDATION_REPORT.md` is the precision-first English audit snapshot. It compares
+the frozen V1 baseline with the deterministic validated core, reports quarantine and unresolved
+REVIEW decisions, and intentionally leaves newly sparse or empty minutes unfilled.
+
 The renderer endpoint is `PHASE4A4_1_PRODUCTION_CLEANUP_REPORT.md`, following the physical
 comparison in `PHASE4A4_PHYSICAL_COMPARISON_REPORT.md`. The subsequent
 `PHASE4B_STANDALONE_RUNTIME_REPORT.md` records the bounded, offline Kindle runtime pilot and clearly

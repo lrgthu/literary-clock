@@ -54,6 +54,16 @@ from litclock.render.profiles import get_device_profile
 from litclock.render.suitability import is_renderable_for_device
 from litclock.render.typography import FontSelection, discover_font, discover_time_font
 from litclock.selector import NoQuoteAvailable, QuoteSelector
+from litclock.semantic_adjudication import (
+    run_semantic_adjudication,
+    write_semantic_adjudication_report,
+)
+from litclock.semantic_audit import (
+    apply_semantic_audit,
+    run_semantic_audit,
+    write_semantic_audit_artifacts,
+    write_semantic_report,
+)
 from litclock.stats import calculate_stats, write_reports
 from litclock.wikisource import acquire_dump
 from litclock.wikisource_mining import mine_wikisource_dump, revalidate_wikisource_imports
@@ -314,6 +324,75 @@ def build_parser() -> argparse.ArgumentParser:
     bundle_parser.add_argument(
         "--pilot-date",
         help="generate only this ISO date overlay for a small pilot",
+    )
+
+    semantic_audit_parser = commands.add_parser(
+        "semantic-audit",
+        help=(
+            "classify all selectable English quote-minute relationships without activating changes"
+        ),
+    )
+    _database_argument(semantic_audit_parser)
+    semantic_audit_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-audit",
+    )
+
+    semantic_apply_parser = commands.add_parser(
+        "semantic-apply",
+        help="activate one complete semantic audit and exclude QUARANTINE/REVIEW relationships",
+    )
+    _database_argument(semantic_apply_parser)
+    semantic_apply_parser.add_argument("run_id", type=int)
+
+    semantic_report_parser = commands.add_parser(
+        "semantic-report",
+        help="write semantic audit impact artifacts and the committed summary report",
+    )
+    _database_argument(semantic_report_parser)
+    semantic_report_parser.add_argument("--run-id", type=int)
+    semantic_report_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-audit",
+    )
+    semantic_report_parser.add_argument(
+        "--report",
+        type=Path,
+        default=PROJECT_ROOT / "docs" / "reports" / "CORPUS_SEMANTIC_REVALIDATION_REPORT.md",
+    )
+    semantic_adjudicate_parser = commands.add_parser(
+        "semantic-adjudicate",
+        help="run semantic v2 adjudication and stage validated existing-corpus repairs",
+    )
+    _database_argument(semantic_adjudicate_parser)
+    semantic_adjudicate_parser.add_argument("--prior-run-id", type=int)
+    semantic_adjudicate_parser.add_argument(
+        "--manual",
+        type=Path,
+        default=PROJECT_ROOT / "data" / "semantic" / "english_v2_manual_adjudications.tsv",
+    )
+    semantic_adjudication_report_parser = commands.add_parser(
+        "semantic-adjudication-report",
+        help="write v2 adjudication transitions, repairs, targets, and final report",
+    )
+    _database_argument(semantic_adjudication_report_parser)
+    semantic_adjudication_report_parser.add_argument("--run-id", type=int)
+    semantic_adjudication_report_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-adjudication",
+    )
+    semantic_adjudication_report_parser.add_argument(
+        "--renderer-audit",
+        type=Path,
+        default=DEFAULT_REPORT_DIRECTORY / "semantic-adjudication" / "renderer_audit.json",
+    )
+    semantic_adjudication_report_parser.add_argument(
+        "--report",
+        type=Path,
+        default=PROJECT_ROOT / "docs" / "reports" / "CORPUS_SEMANTIC_ADJUDICATION_REPORT.md",
     )
 
     mine_parser = commands.add_parser(
@@ -689,6 +768,82 @@ def main(argv: Sequence[str] | None = None) -> int:
             finally:
                 connection.close()
             print(json.dumps(summary.as_dict(), indent=2))
+        elif args.command == "semantic-audit":
+            connection = connect_database(args.db)
+            try:
+                result = run_semantic_audit(connection)
+                artifacts = write_semantic_audit_artifacts(
+                    connection, int(result["run_id"]), args.output_dir
+                )
+            finally:
+                connection.close()
+            print(json.dumps({**result, "artifacts": artifacts}, indent=2))
+        elif args.command == "semantic-apply":
+            connection = connect_database(args.db)
+            try:
+                result = apply_semantic_audit(connection, args.run_id)
+            finally:
+                connection.close()
+            print(json.dumps(result, indent=2))
+        elif args.command == "semantic-report":
+            connection = connect_database(args.db)
+            try:
+                initialize_database(connection)
+                run_id = args.run_id
+                if run_id is None:
+                    row = connection.execute(
+                        "SELECT id FROM semantic_audit_runs ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                    if row is None:
+                        raise ValueError("no semantic audit run exists")
+                    run_id = int(row["id"])
+                artifacts = write_semantic_audit_artifacts(connection, run_id, args.output_dir)
+                result = write_semantic_report(
+                    connection,
+                    run_id,
+                    args.report,
+                    args.output_dir,
+                )
+            finally:
+                connection.close()
+            print(json.dumps({**result, "artifacts": artifacts}, indent=2))
+        elif args.command == "semantic-adjudicate":
+            connection = connect_database(args.db)
+            try:
+                result = run_semantic_adjudication(
+                    connection,
+                    prior_run_id=args.prior_run_id,
+                    manual_path=args.manual,
+                )
+            finally:
+                connection.close()
+            print(json.dumps(result, indent=2))
+        elif args.command == "semantic-adjudication-report":
+            connection = connect_database(args.db)
+            try:
+                initialize_database(connection)
+                run_id = args.run_id
+                if run_id is None:
+                    row = connection.execute(
+                        """
+                        SELECT id FROM semantic_audit_runs
+                        WHERE audit_version = 'english-clock-semantics-v2'
+                        ORDER BY id DESC LIMIT 1
+                        """
+                    ).fetchone()
+                    if row is None:
+                        raise ValueError("no semantic v2 adjudication run exists")
+                    run_id = int(row["id"])
+                result = write_semantic_adjudication_report(
+                    connection,
+                    run_id,
+                    args.report,
+                    args.output_dir,
+                    renderer_audit_path=args.renderer_audit,
+                )
+            finally:
+                connection.close()
+            print(json.dumps(result, indent=2))
         elif args.command == "render-qa":
             connection = connect_database(args.db)
             try:
