@@ -25,6 +25,9 @@ dashboard, iconography, border, Kindle status bar, or decorative interface.
   candidates.
 
 Exact phase snapshots and renderer measurements are in [`docs/reports/`](docs/reports/).
+Those V1 figures are the pre-audit baseline. The English semantic revalidation documented in
+[`CORPUS_SEMANTIC_REVALIDATION_REPORT.md`](docs/reports/CORPUS_SEMANTIC_REVALIDATION_REPORT.md)
+reduces the validated selectable view rather than preserving coverage with questionable records.
 
 The frozen renderer produces reusable quote frames on the build Mac rather than typesetting on the
 Kindle. A bounded Phase 4B pilot and two-hour power study have proved a tiny, offline Kindle-native
@@ -89,6 +92,10 @@ library everywhere else.
   acquisition, and records OPF metadata, commit IDs, and content checksums.
 - `src/litclock/xhtml.py` extracts semantic prose and exact source offsets from XHTML.
 - `src/litclock/timeparse.py` detects and conservatively resolves explicit literary time phrases.
+- `src/litclock/semantic.py` deterministically distinguishes clock-time grammar from durations,
+  references, scores, ratios, identifiers, and context-poor lexical matches.
+- `src/litclock/semantic_audit.py` revalidates every existing English quote-minute relationship,
+  exports review evidence, and atomically activates a reversible audited selection view.
 - `src/litclock/mining.py` scores candidates, deduplicates passages, prioritizes sparse minutes,
   manages the review queue, and performs capped high-confidence imports.
 - `src/litclock/phase2a5.py` audits candidate disposition, runs the evidence-recording contextual
@@ -143,6 +150,12 @@ Highlight validation has five corpus statuses:
 - `INVALID_TIME`: the source time is not a valid 24-hour `HH:MM` value and the row is quarantined.
 
 Only the two verified statuses are automatically selectable.
+
+Highlight verification is necessary but not sufficient. An activated English semantic audit also
+requires the highlighted phrase to derive the claimed minute under accepted clock grammar and its
+context not to force a duration, reference, score, ratio, measurement, identifier, or structural
+reading. Unknown cases are REVIEW and are excluded from the precision-first selectable view; no
+canonical quote or provenance record is deleted.
 
 ## Upstream corpora and licensing
 
@@ -228,6 +241,24 @@ two totals but once in each legitimate minute pool. The canonical total also inc
 ambiguous and unmatched records. The report ranks mining targets by effective candidate count,
 canonical candidate count, author diversity, book diversity, and time. The machine-readable minute
 report includes all 1,440 rows.
+
+## Revalidate English clock-time semantics
+
+Run the audit before mutation, inspect the ignored review artifacts, then explicitly activate the
+reviewed run:
+
+```bash
+uv run litclock semantic-audit
+uv run litclock semantic-report --run-id RUN_ID
+uv run litclock semantic-apply RUN_ID
+uv run litclock semantic-report --run-id RUN_ID
+```
+
+The first command classifies all underlying selectable English relationships without changing the
+active minute pool. Detailed CSVs under `data/generated/semantic-audit/` include quotation context
+and are deliberately ignored. Activation filters QUARANTINE and unresolved REVIEW decisions from
+`quote_minute_pool` while preserving the canonical quote, source provenance, and full versioned
+decision record. It does not mine or manufacture replacements.
 
 ## Mine Standard Ebooks
 

@@ -1,0 +1,13 @@
+case_id	action	minute	phrase	quote
+true_dashed_meridiem	KEEP	914	3:14	"Yes—careful—3:14—p—m," came the answer.
+true_source_backed_written	KEEP	217	three thirty-seven A.M.	It was three thirty-seven A.M., and Maggie was asleep.
+true_fraction_oclock	KEEP	450	7 1/2 o'clock	Please come to dinner at 7 1/2 o'clock.
+true_nested_relative	KEEP	336	77 minutes before seven minutes to seven	Wait exactly 77 minutes before seven minutes to seven.
+true_half_past	KEEP	450	half-past seven	The face says half-past seven.
+false_hyphenated_duration	QUARANTINE	80	one twenty	There was one twenty-minute interval.
+false_quantity_page	QUARANTINE	80	one twenty	There was one twenty-page chapter.
+false_quantity_money	QUARANTINE	80	one twenty	He handed me one twenty-dollar note.
+false_quantity_measurement	QUARANTINE	80	one twenty	They crossed one twenty-foot section.
+false_partial_duration_highlight	QUARANTINE	541	a minute after nine	It was half a minute after nine when he spoke.
+false_clock_range	QUARANTINE	547	9:07	The schedule covered 9:07–9:12.
+unresolved_written	REVIEW	741	Twelve twenty-one	Twelve twenty-one.

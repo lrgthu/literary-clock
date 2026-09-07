@@ -1,0 +1,148 @@
+quote_id	original_minute	adjudication_action	corrected_minutes	corrected_highlight	evidence_code	evidence_text	reviewed_by
+2281	702	KEEP_AS_IS			DIARY_TIMESTAMP	The displayed passage begins with a diary-style timestamp followed by first-person prose.	semantic-adjudication-v2
+2281	1422	KEEP_AS_IS			DIARY_TIMESTAMP	The exact 12-hour diary timestamp has no deterministic daypart and legitimately retains both clockface sides.	semantic-adjudication-v2
+3236	277	REPAIR_MINUTE	997		DISPLAYED_DAYPART	The same sentence says that both recorded birth times occurred "that afternoon".	semantic-adjudication-v2
+4004	1236	KEEP_AS_IS			NARRATIVE_24H_TIMESTAMP	The passage starts with an in-range 24-hour timestamp immediately followed by narrative action.	semantic-adjudication-v2
+6312	421	REPAIR_MINUTE_AND_HIGHLIGHT	1170	7 1/2 o'clock	SOURCE_BACKED_HIGHLIGHT	The source sentence explicitly invites guests to dinner at "7 1/2 o'clock"; the legacy span stopped after "7 1".	semantic-adjudication-v2
+6757	404	KEEP_AS_IS			SOURCE_CONTEXT_DAYPART	The pinned preceding source paragraph lists the explosions as occurring "in the morning", including 6:44.	semantic-adjudication-v2
+6757	1124	QUARANTINE			SOURCE_CONTEXT_DAYPART	The pinned preceding source paragraph resolves 6:44 to morning, so the PM clockface side conflicts with source context.	semantic-adjudication-v2
+203	57	KEEP_AS_IS			NARRATIVE_TIMESTAMP	The leaf advances after an elapsed minute and prints 12:57 before the character performs arithmetic on that time.	semantic-adjudication-v2
+474	153	KEEP_AS_IS			NARRATIVE_CLOCK_CONTEXT	The exact spoken form occurs in a hotel-night context concerned with a room call and night bell.	semantic-adjudication-v2
+665	217	REPAIR_HIGHLIGHT	217	three thirty-seven A.M.	SOURCE_BACKED_HIGHLIGHT	The sentence says "It was three thirty-seven A.M."; the legacy highlight omitted the hour.	semantic-adjudication-v2
+782	983	REPAIR_MINUTE	263		DISPLAYED_DAYPART	The quote explicitly places 4:23 on Monday morning.	semantic-adjudication-v2
+931	324	KEEP_AS_IS			DUPLICATE_SOURCE_EVIDENCE	The fuller duplicate quote 932 explicitly identifies a digital clock advancing from 5:23 to 5:24.	semantic-adjudication-v2
+1163	1132	REPAIR_MINUTE	412		DISPLAYED_DAYPART	The same sentence says the 6:52 train was caught the following morning.	semantic-adjudication-v2
+1292	450	REPAIR_MINUTE_AND_HIGHLIGHT	450,1170	half-past seven	SOURCE_BACKED_HIGHLIGHT	The legacy span highlighted only "seven" although the sentence itself says "half-past seven".	semantic-adjudication-v2
+1922	600	REPAIR_MINUTE	630,1350		DIALOGUE_TIME_CORRECTION	The appointment dialogue corrects "Ten" to the exact spoken time "Ten-thirty".	semantic-adjudication-v2
+1940	603	KEEP_AS_IS			EXPLICIT_CLOCK_GRAMMAR	The complete highlighted phrase explicitly states three minutes past ten.	semantic-adjudication-v2
+1950	606	KEEP_AS_IS			EXPLICIT_CLOCK_GRAMMAR	The complete highlighted phrase explicitly states six minutes past ten.	semantic-adjudication-v2
+1960	609	KEEP_AS_IS			TRAIN_TIME_IDIOM	"The 10:09" is used as the named service from which the narrator imagines rolling off.	semantic-adjudication-v2
+1960	1329	KEEP_AS_IS			TRAIN_TIME_IDIOM	The exact 12-hour service designation remains daypart-neutral in the displayed prose.	semantic-adjudication-v2
+2193	672	KEEP_AS_IS			NARRATIVE_TIMESTAMP	The exact time introduces an action-stations log entry followed immediately by narrative action.	semantic-adjudication-v2
+2342	720	KEEP_AS_IS			NOONDAY_EVENT	A noonday siren is an event explicitly occurring at noon, unlike an incidental noonday adjective.	semantic-adjudication-v2
+2348	720	QUARANTINE			NON_CLOCK_DAYPART	"Noonday" only modifies sunlight and does not state a clock time or timed event.	semantic-adjudication-v2
+2451	746	QUARANTINE			NON_TEMPORAL_NUMBER	The standalone number 26 follows 12.25 pm in an unrelated sequence and does not encode 12:26.	semantic-adjudication-v2
+2455	747	QUARANTINE			NON_TEMPORAL_NUMBER	The standalone number 27 follows 12.25 pm in an unrelated sequence and does not encode 12:27.	semantic-adjudication-v2
+2506	765	KEEP_AS_IS			DISPATCH_TIMESTAMP	The dispatch explicitly says "just now, 12:45" before reporting movement.	semantic-adjudication-v2
+2507	765	KEEP_AS_IS			DISPATCH_TIMESTAMP	This source variant preserves the same explicit "just now, 12:45" dispatch timestamp.	semantic-adjudication-v2
+2799	863	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Two-twenty-two or there-aboutish" is explicitly approximate and cannot support an exact minute.	semantic-adjudication-v2
+2809	868	KEEP_AS_IS			PRECISE_CLOCK_WITH_SECONDS	The expression deterministically states 28 minutes and 57 seconds after 2 p.m., which lies in minute 14:28.	semantic-adjudication-v2
+2985	915	KEEP_AS_IS			NOTE_TIMESTAMP	The signed note gives 3:15 and the following sentence identifies it as about four hours in the future.	semantic-adjudication-v2
+3427	1060	KEEP_AS_IS			DIALOGUE_TIME_ANSWER	The speaker answers a direct question about whether it is 5:30 with the corrected clock reading 5:40.	semantic-adjudication-v2
+3618	1125	REVIEW			INSUFFICIENT_CONTEXT	The exact-looking utterance may be a birth time, but the displayed corpus evidence never identifies what "Six forty-five" denotes.	semantic-adjudication-v2
+3647	1137	KEEP_AS_IS			CLOCK_FACE_READING	The sentence explicitly describes clock hands pointing to three minutes to the hour and identifies that hour as seven.	semantic-adjudication-v2
+3866	1195	KEEP_AS_IS			ELLIPTICAL_CLOCK_GRAMMAR	The party starts at eight and "it's five to" deterministically expresses 7:55 in the same sentence.	semantic-adjudication-v2
+4025	1243	KEEP_AS_IS			NARRATIVE_TIME_ANNOUNCEMENT	In the wager scene, Thomas Flanagan announces the exact time 8:43 while the room waits in silence.	semantic-adjudication-v2
+4051	1252	KEEP_AS_IS			TRAIN_TIME_IDIOM	The dialogue names the 8:52 rail service and its changes.	semantic-adjudication-v2
+4182	1292	KEEP_AS_IS			DUPLICATE_SOURCE_EVIDENCE	The fuller duplicate records 4181 and 4184 show a digital clock advancing through 9:31 to 9:32.	semantic-adjudication-v2
+4245	1318	REVIEW			INSUFFICIENT_CONTEXT	The excerpt begins mid-construction and no pinned local source context establishes what 21:58 denotes.	semantic-adjudication-v2
+4316	1334	KEEP_AS_IS			PRECISE_CLOCK_WITH_SECONDS	The complete source expression "2214:10h" is a precise 24-hour timestamp; the highlight retains its minute-bearing component.	semantic-adjudication-v2
+4317	1334	KEEP_AS_IS			PRECISE_CLOCK_WITH_SECONDS	This source variant likewise contains the complete precise timestamp "2214:10h".	semantic-adjudication-v2
+4322	1336	QUARANTINE			CLOCK_RANGE_EXPRESSION	The passage says "between 2216 and 2226" and does not state one exact display minute.	semantic-adjudication-v2
+4327	1338	KEEP_AS_IS			DUPLICATE_SOURCE_EVIDENCE	The fuller duplicate quote 4329 shows this as one watch reading compared with another.	semantic-adjudication-v2
+4553	1410	QUARANTINE			NON_TEMPORAL_MEDIA_POSITION	The number 2330 is a viewer cue position, not a time of day.	semantic-adjudication-v2
+4682	213	KEEP_AS_IS			DIGITAL_CLOCK_READING	"Red digital 3:33" describes a digital clock-style display on the wall.	semantic-adjudication-v2
+4682	933	KEEP_AS_IS			DIGITAL_CLOCK_READING	No reliable daypart evidence resolves the digital 3:33, so its paired clockface side remains valid.	semantic-adjudication-v2
+4704	336	KEEP_AS_IS			NESTED_EXACT_CLOCK_GRAMMAR	Seventy-seven minutes before seven minutes to seven deterministically evaluates to 5:36.	semantic-adjudication-v2
+4706	344	REPAIR_MINUTE_AND_HIGHLIGHT	336,1056	77 minutes before seven minutes to seven	SOURCE_BACKED_HIGHLIGHT	The legacy span stopped before the inner "minutes to seven" expression; the complete phrase deterministically evaluates to 5:36.	semantic-adjudication-v2
+4772	566	KEEP_AS_IS			WAKE_TIME_SEQUENCE	The narrator explicitly describes 8:43, 11:51, and 9:26 as his irregular rising times.	semantic-adjudication-v2
+5234	9	KEEP_AS_IS			MIDNIGHT_TRAIN_TIME	The sentence explicitly calls 12:09 the midnight train.	semantic-adjudication-v2
+566	180	KEEP_AS_IS			COMPACT_OPERATION_TIME	The conventional 0300 notation identifies the time of the secret overnight operation.	semantic-adjudication-v2
+796	270	KEEP_AS_IS			COMPACT_WORK_TIME	The character is normally present at 2330 and must rise at 0430 for a breakfast shift.	semantic-adjudication-v2
+6227	482	KEEP_AS_IS			TRAIN_TIME_IDIOM	"The 8:02 to catch" is a named service in ordinary narrative prose.	semantic-adjudication-v2
+6227	1202	KEEP_AS_IS			TRAIN_TIME_IDIOM	The service designation contains no deterministic daypart, so its paired clockface side remains valid.	semantic-adjudication-v2
+6244	646	KEEP_AS_IS			SOURCE_TIMELINE_EVIDENCE	Pinned source context shows 10:46 pencilled on an urgent delivery envelope that must reach a ship before eleven.	semantic-adjudication-v2
+6244	1366	KEEP_AS_IS			SOURCE_TIMELINE_EVIDENCE	The pinned passage supplies no deterministic AM/PM marker, so the paired clockface side remains valid.	semantic-adjudication-v2
+6363	523	REPAIR_MINUTE	1243		SOURCE_CONTEXT_DAYPART	The pinned preceding paragraph explicitly places the trooper's 8:43 notebook entry on Sunday evening.	semantic-adjudication-v2
+6388	641	QUARANTINE			CLOCK_RANGE_EXPRESSION	The source line is the interval 10:41--10:42 rather than one exact instant.	semantic-adjudication-v2
+6388	1361	QUARANTINE			CLOCK_RANGE_EXPRESSION	The source line is the interval 10:41--10:42 rather than one exact instant.	semantic-adjudication-v2
+6454	381	KEEP_AS_IS			TRAIN_TIME_IDIOM	The character says he left on the 6:21 service.	semantic-adjudication-v2
+6454	1101	KEEP_AS_IS			TRAIN_TIME_IDIOM	No deterministic daypart evidence resolves the named 6:21 service.	semantic-adjudication-v2
+6459	228	KEEP_AS_IS			NARRATIVE_TIMESTAMP	The question asks whether the visit occurred at 3:48 on the day of the fire.	semantic-adjudication-v2
+6484	499	KEEP_AS_IS			TRAIN_TIME_IDIOM	The character leaves the house to catch the 8:19 for Manitowoc.	semantic-adjudication-v2
+6484	1219	KEEP_AS_IS			TRAIN_TIME_IDIOM	No deterministic daypart evidence resolves the named 8:19 service.	semantic-adjudication-v2
+6492	257	KEEP_AS_IS			TRAIN_TIME_IDIOM	The speaker asks that trunks be put aboard the 4:17 service.	semantic-adjudication-v2
+6492	977	KEEP_AS_IS			TRAIN_TIME_IDIOM	No deterministic daypart evidence resolves the named 4:17 service.	semantic-adjudication-v2
+6595	316	REPAIR_MINUTE	1036		DISPLAYED_DAYPART	The sentence explicitly says the 5:16 flyer returned yesterday afternoon.	semantic-adjudication-v2
+6681	168	REPAIR_MINUTE	888		DISPLAYED_DAYPART	The same sentence places the 2:48 Greenwich crossing this afternoon.	semantic-adjudication-v2
+6755	303	KEEP_AS_IS			TRAIN_TIME_IDIOM	"Making for the 5:03" names the service the characters intend to catch.	semantic-adjudication-v2
+6755	1023	KEEP_AS_IS			TRAIN_TIME_IDIOM	No deterministic daypart evidence resolves the named 5:03 service.	semantic-adjudication-v2
+6756	313	REPAIR_MINUTE	1033		DISPLAYED_DAYPART	The character explicitly catches the 5:13 that afternoon.	semantic-adjudication-v2
+6783	1296	REPAIR_MINUTE	576		DISPLAYED_DAYPART	The same sentence calls the 9:36 service a local "that morning".	semantic-adjudication-v2
+6832	1122	KEEP_AS_IS			TRAIN_TIME_IDIOM	The speaker asks whether he can make the 6:42 at Jenkinstown.	semantic-adjudication-v2
+7252	388	QUARANTINE			REFERENCE_PAGE_LINE	The parenthetical 527-6:28 is a source-location range, not a clock time.	semantic-adjudication-v2
+7252	1108	QUARANTINE			REFERENCE_PAGE_LINE	The parenthetical 527-6:28 is a source-location range, not a clock time.	semantic-adjudication-v2
+54	0	QUARANTINE			NON_CLOCK_DAYPART	"The heart of the night" is a figurative daypart, not midnight.	semantic-adjudication-v2
+1019	359	QUARANTINE			NON_CLOCK_DAYPART	Dawn is not an exact minute and the phrase does not encode 05:59.	semantic-adjudication-v2
+1084	385	KEEP_AS_IS			TRAIN_TIME_IDIOM	The 6.25 is a named service which the character deliberately aims to catch; the next sentence says it is delayed.	semantic-adjudication-v2
+1662	540	QUARANTINE			HISTORICAL_HOUR_REFERENCE	The biblical ninth hour is not a modern clock-face expression for 09:00.	semantic-adjudication-v2
+1693	548	QUARANTINE			CLOCK_RANGE_EXPRESSION	"Between nine and ten" is a range and cannot support an exact minute.	semantic-adjudication-v2
+1819	585	KEEP_AS_IS			CLOCK_SEQUENCE	The sequence 9.15, 9.30, 9.45, 10 records advancing quarter-hour clock readings.	semantic-adjudication-v2
+2045	636	KEEP_AS_IS			DISPATCH_TIMESTAMP	The postmark/dispatch record explicitly supplies ten thirty-six.	semantic-adjudication-v2
+2087	653	KEEP_AS_IS			OBSERVATION_LOG_TIMESTAMP	The narrator writes 10.53 hrs as the exact time of an observation.	semantic-adjudication-v2
+2172	664	KEEP_AS_IS			TRANSPORT_DEPARTURE_TIME	The announcement names the 11.04 service ready for boarding at Gate Six.	semantic-adjudication-v2
+2278	701	REPAIR_HIGHLIGHT	701	Eleven forty-one	EXACT_SOURCE_HIGHLIGHT	The exact spoken time introduces the next log incident; the corrected highlight also preserves source capitalization.	semantic-adjudication-v2
+2280	702	KEEP_AS_IS			TRAIN_TIME_IDIOM	The dialogue immediately identifies "the eleven-forty-two" as a train.	semantic-adjudication-v2
+2301	708	KEEP_AS_IS			TRAIN_TIME_IDIOM	"Make that eleven-forty-eight" denotes the service the characters can catch.	semantic-adjudication-v2
+2406	729	KEEP_AS_IS			GMT_MESSAGE_TIMESTAMP	The message header explicitly supplies date, GMT time, and sequence number.	semantic-adjudication-v2
+2407	729	KEEP_AS_IS			GMT_MESSAGE_TIMESTAMP	This source variant preserves the same date and GMT message timestamp.	semantic-adjudication-v2
+2439	741	REVIEW			INSUFFICIENT_CONTEXT	The isolated spoken number may be a clock reading, but the displayed corpus evidence does not establish that interpretation.	semantic-adjudication-v2
+2494	761	KEEP_AS_IS			FLIGHT_TIME_IDIOM	The imagined airport announcement names the 12.41 flight for boarding.	semantic-adjudication-v2
+2980	914	KEEP_AS_IS			TRAIN_TIME_IDIOM	The signal and "3.14 up" identify a rail service passing the station.	semantic-adjudication-v2
+3058	945	KEEP_AS_IS			DIALOGUE_TIME_STATEMENT	The speaker says it is already three forty-five while discussing whether the other person can arrive.	semantic-adjudication-v2
+3147	963	KEEP_AS_IS			LOG_TIMESTAMP	The page entry begins with 16.03 before recording the cat's action.	semantic-adjudication-v2
+3186	978	KEEP_AS_IS			TRAIN_TIME_IDIOM	A station loudspeaker announces the 16.18 due at platform two.	semantic-adjudication-v2
+3805	1178	KEEP_AS_IS			TRANSACTION_TIMESTAMP	The 19.38 value is the recorded French time of a cash-card use.	semantic-adjudication-v2
+4153	1282	KEEP_AS_IS			NARRATIVE_24H_TIMESTAMP	The parenthetical 21.22 hrs timestamps Miss Squire's arrival.	semantic-adjudication-v2
+4703	332	KEEP_AS_IS			NARRATIVE_24H_TIMESTAMP	"By 05.32" establishes the exact completion time of the driver's errand.	semantic-adjudication-v2
+4814	701	KEEP_AS_IS			LOG_TIMESTAMP	The exact spoken time introduces the next incident in an explicitly identified log.	semantic-adjudication-v2
+4876	1145	QUARANTINE			CLOCK_RANGE_EXPRESSION	The schedule says 7--7.05 and therefore describes an interval rather than one instant.	semantic-adjudication-v2
+378	120	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	The mistranslated phrase is explicitly qualified by "barely" and does not encode 02:00 exactly.	semantic-adjudication-v2
+1689	547	QUARANTINE			HIGHLIGHT_SEMANTIC_MISMATCH	"Seven minutes past" omits the base hour from the highlighted phrase.	semantic-adjudication-v2
+1887	600	QUARANTINE			INFERRED_NOT_EXPRESSED_CLOCK	Ten o'clock can only be inferred by arithmetic; it is not expressed in the highlighted wording.	semantic-adjudication-v2
+1946	605	QUARANTINE			HIGHLIGHT_SEMANTIC_MISMATCH	"Five minutes past" omits the base hour from the highlighted phrase.	semantic-adjudication-v2
+2617	799	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Past one" gives no exact minute and cannot justify 13:19.	semantic-adjudication-v2
+3338	1021	QUARANTINE			HIGHLIGHT_SEMANTIC_MISMATCH	"After five" is non-exact and the later half-hour is outside the highlighted span.	semantic-adjudication-v2
+4101	1261	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Past nine" gives no exact minute and cannot justify 21:01.	semantic-adjudication-v2
+4103	1261	QUARANTINE			NON_EXACT_POLICY_BOUNDARY	"After nine" states a curfew boundary, not the exact minute 21:01.	semantic-adjudication-v2
+4105	1262	QUARANTINE			NON_EXACT_POLICY_BOUNDARY	"After nine" states a curfew boundary, not the exact minute 21:02.	semantic-adjudication-v2
+4421	1369	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Well after 2245h" does not identify one exact minute.	semantic-adjudication-v2
+28	0	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Half night" is not a standard exact midnight construction in this mistranslated passage.	semantic-adjudication-v2
+258	71	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Nearer to one than half past" is comparative and does not encode 01:11.	semantic-adjudication-v2
+2422	735	QUARANTINE			HIGHLIGHT_SEMANTIC_MISMATCH	"Quarter-past" omits its base hour; surrounding text must not supply the missing component.	semantic-adjudication-v2
+1612	539	QUARANTINE			HIGHLIGHT_SEMANTIC_MISMATCH	"One minute to" omits the base hour from the highlighted phrase.	semantic-adjudication-v2
+2338	719	QUARANTINE			APPROXIMATE_CLOCK_EXPRESSION	"Near to twelve" does not state one exact minute.	semantic-adjudication-v2
+6930	194	REPAIR_MINUTE	914		EXPLICIT_DASHED_MERIDIEM	The text immediately following 3:14 spells out p.m. with dash-separated letters, so only the PM relationship is valid.	semantic-adjudication-v2
+6930	914	KEEP_AS_IS			EXPLICIT_DASHED_MERIDIEM	The text immediately following 3:14 spells out p.m. with dash-separated letters.	semantic-adjudication-v2
+956	333	KEEP_AS_IS			SURVEILLANCE_IMAGE_TIMESTAMP	The surrounding sentence says the still pictures were marked 05.33, making this an exact image timestamp.	semantic-adjudication-v2
+1322	464	KEEP_AS_IS			TRAIN_TIME_IN_NARRATIVE	The character is late for work and refers to dying "on the seven forty-four", identifying a commuter service.	semantic-adjudication-v2
+1323	464	KEEP_AS_IS			TRAIN_TIME_IN_NARRATIVE	The phrase "on the seven forty-four" names the commuter service in a discussion of being late for work.	semantic-adjudication-v2
+1324	464	KEEP_AS_IS			TRAIN_TIME_IN_NARRATIVE	The wider displayed excerpt connects "the seven forty-four" to being late for work and identifies a commuter service.	semantic-adjudication-v2
+1336	467	KEEP_AS_IS			BOOKING_LOG_TIMESTAMP	The dialogue asks whether names were booked in and answers with a sequence of names paired with advancing exact times.	semantic-adjudication-v2
+1449	489	KEEP_AS_IS			BOOKING_LOG_TIMESTAMP	The dialogue asks whether names were booked in and answers with a sequence of names paired with advancing exact times.	semantic-adjudication-v2
+1456	491	KEEP_AS_IS			BOOKING_LOG_TIMESTAMP	The dialogue asks whether names were booked in and answers with a sequence of names paired with advancing exact times.	semantic-adjudication-v2
+1489	503	KEEP_AS_IS			BOOKING_LOG_TIMESTAMP	The dialogue asks whether names were booked in and answers with a sequence of names paired with advancing exact times.	semantic-adjudication-v2
+6394	608	KEEP_AS_IS			TRAIN_TIME_IDIOM	The gates open for the 10:08 Washington express, explicitly naming a rail service.	semantic-adjudication-v2
+6394	1328	KEEP_AS_IS			TRAIN_TIME_IDIOM	The named 10:08 Washington express has no deterministic daypart, so the paired clockface relationship remains valid.	semantic-adjudication-v2
+44	0	REPAIR_HIGHLIGHT	0	Midnight	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+439	137	REPAIR_HIGHLIGHT	137	Two-seventeen	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+545	180	REPAIR_HIGHLIGHT	180	at three o'clock in the morning	EXACT_SOURCE_HIGHLIGHT	The stored time text capitalized a lowercase source word; the corrected span preserves the source exactly.	semantic-adjudication-v2
+862	300	REPAIR_HIGHLIGHT	300	Five o'clock	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+906	310	REPAIR_HIGHLIGHT	310	Ten minutes past five	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+1085	385	REPAIR_HIGHLIGHT	385	Six-twenty-five	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+1980	614	REPAIR_HIGHLIGHT	614	Ten fourteen	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+2158	660	REPAIR_HIGHLIGHT	660	at eleven	EXACT_SOURCE_HIGHLIGHT	The stored time text capitalized a lowercase source word; the corrected span preserves the source exactly.	semantic-adjudication-v2
+2567	780	REPAIR_HIGHLIGHT	780	One o'clock	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+2610	795	REPAIR_HIGHLIGHT	795	One-fifteen	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+2633	805	REPAIR_HIGHLIGHT	805	One-twenty-five	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+2769	853	REPAIR_HIGHLIGHT	853	two . . . thirteen	EXACT_SOURCE_HIGHLIGHT	The stored time text capitalized a lowercase source word; the corrected span preserves the source exactly.	semantic-adjudication-v2
+2787	860	REPAIR_HIGHLIGHT	860	Twenty past two	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+2939	900	REPAIR_HIGHLIGHT	900	Three o'clock	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+3130	960	REPAIR_HIGHLIGHT	960	Four	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by capitalization.	semantic-adjudication-v2
+3152	965	REPAIR_HIGHLIGHT	965	Five past four	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+4261	1320	REPAIR_HIGHLIGHT	1320	Ten o'clock	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+4698	300	REPAIR_HIGHLIGHT	300	Five o'clock	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+4709	352	REPAIR_HIGHLIGHT	352	Five fifty-two a.m.	EXACT_SOURCE_HIGHLIGHT	The corrected span includes the exact capitalized source phrase and its meridiem period.	semantic-adjudication-v2
+4776	579	REPAIR_HIGHLIGHT	579	9.39 a.m	EXACT_SOURCE_HIGHLIGHT	The stored time text included terminal punctuation not present inside the source highlight.	semantic-adjudication-v2
+4847	923	REPAIR_HIGHLIGHT	923	Three twenty-three	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization.	semantic-adjudication-v2
+4925	1381	REPAIR_HIGHLIGHT	661,1381	One minute past eleven	EXACT_SOURCE_HIGHLIGHT	The stored time text differs from the exact source span only by initial capitalization; both shared relationships use this span.	semantic-adjudication-v2

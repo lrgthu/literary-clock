@@ -28,6 +28,7 @@ from litclock.normalize import (
     quality_rank,
     text_hash,
 )
+from litclock.semantic import SEMANTIC_AUDIT_VERSION, SemanticAction, classify_clock_relationship
 
 
 def _now() -> str:
@@ -119,6 +120,19 @@ def _import_quote(
         return QualityStatus.MALFORMED
 
     highlight = locate_time_text(quote, time_text)
+    semantic = None
+    effective_quality = highlight.status
+    if highlight.start is not None and highlight.end is not None:
+        semantic = classify_clock_relationship(
+            quote,
+            highlight.start,
+            highlight.end,
+            minute_of_day,
+            expected_text=time_text,
+            parser_route="legacy_import",
+        )
+        if semantic.action != SemanticAction.KEEP:
+            effective_quality = QualityStatus.AMBIGUOUS
     exact_hash = text_hash(quote)
     normalized_hash = normalized_quote_hash(quote)
     existing = connection.execute(
@@ -152,7 +166,7 @@ def _import_quote(
                 normalized_hash,
                 highlight.start,
                 highlight.end,
-                highlight.status.value,
+                effective_quality.value,
                 created_at,
             ),
         )
@@ -171,7 +185,7 @@ def _import_quote(
             DuplicateKind.EXACT if exact_fields_match else DuplicateKind.TRIVIAL_VARIANT
         )
         merged_sfw = _merge_sfw(existing["sfw"], raw.sfw)
-        if quality_rank(highlight.status) > quality_rank(existing["quality_status"]):
+        if quality_rank(effective_quality) > quality_rank(existing["quality_status"]):
             connection.execute(
                 """
                 UPDATE quotes SET
@@ -194,7 +208,7 @@ def _import_quote(
                     exact_hash,
                     highlight.start,
                     highlight.end,
-                    highlight.status.value,
+                    effective_quality.value,
                     quote_id,
                 ),
             )
@@ -206,8 +220,9 @@ def _import_quote(
         INSERT INTO quote_provenance (
             quote_id, source_id, import_run_id, source_record_id, raw_time_24h, raw_time_text,
             raw_quote, raw_title, raw_author, raw_sfw, raw_quote_hash, validation_status,
-            highlight_start, highlight_end, duplicate_kind, raw_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            highlight_start, highlight_end, duplicate_kind, semantic_class, semantic_action,
+            semantic_reason_code, semantic_audit_version, raw_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             quote_id,
@@ -225,6 +240,10 @@ def _import_quote(
             highlight.start,
             highlight.end,
             duplicate_kind.value,
+            semantic.semantic_class.value if semantic else None,
+            semantic.action.value if semantic else None,
+            semantic.reason_code if semantic else None,
+            SEMANTIC_AUDIT_VERSION if semantic else None,
             _json(raw.raw_payload),
         ),
     )
