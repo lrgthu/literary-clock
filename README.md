@@ -633,3 +633,5 @@ virtual environment, caches, and local scratch corpus are ignored rather than co
   reboot recovery; indefinite 24/7 activation remains an explicit post-test decision.
 - Phase 4C — static ARMv7 native one-shot runtime, checksummed engine selection, and preserved shell
   fallback on the frozen English V1 bundle.
+- Phase 4D — 25-hour offline appliance qualification across midnight and the history-retention
+  boundary. Literary Clock V1 is complete.

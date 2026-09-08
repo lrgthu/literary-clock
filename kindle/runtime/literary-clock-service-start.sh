@@ -145,7 +145,7 @@ if test "$auto_stop_minutes" -gt 0; then
 fi
 
 "$kron" -dir "$runtime_root/kron" -logmax 256 -keepawake "$keepawake" -wakelead 5s \
-    -jobtimeout 30s daemon >> "$status" 2>&1 &
+    -jobtimeout 30s daemon >/dev/null 2>&1 &
 kron_pid=$!
 printf 'kron_pid\t%s\n' "$kron_pid" >> "$session"
 sleep 2

@@ -23,6 +23,10 @@ public-domain mining, clock-face eligibility, and sparse-tail recovery.
 `PHASE4C_NATIVE_RUNTIME_FINAL.md` records the frozen English V1 release, static ARMv7 artifact, and
 physical PW4 native-engine cutover.
 
+`PHASE4D_25H_APPLIANCE_QUALIFICATION.md` is the final V1 appliance report: 25 hours of continuous
+offline minute updates, midnight rollover, bounded history and logs, fallback interoperability, and
+native reboot recovery.
+
 `PHASE3_RENDER_REPORT.md` is the historical pre-finalization renderer report; it records the
 long-quote/data-handoff failure that the finalization pass later traced and fixed. Use
 `PHASE3_RENDER_FINALIZATION_REPORT.md`, `PHASE3_1_CLEANUP_REPORT.md`,

@@ -585,6 +585,7 @@ def test_service_validates_before_pausing_ui_and_is_configurable() -> None:
     assert "keepawake 3m" in source
     assert "auto_stop_minutes" in source
     assert "LITCLOCK_STATE_ROOT" in source
+    assert "-jobtimeout 30s daemon >/dev/null 2>&1 &" in source
 
 
 def test_service_stop_restores_current_named_processes_not_saved_pids() -> None:
