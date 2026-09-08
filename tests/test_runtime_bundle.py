@@ -9,12 +9,19 @@ import pytest
 from PIL import Image
 
 import litclock.deploy as deploy_module
-from litclock.bundle import _date_key, _generated_at, _possible_date_labels, minute_window
+from litclock.bundle import (
+    _date_key,
+    _generated_at,
+    _possible_date_labels,
+    _valid_cached_quote_ids,
+    minute_window,
+)
 from litclock.deploy import (
     DeploymentError,
     deploy_bundle,
     rollback_bundle,
     set_boot_hook,
+    set_production_boot_hook,
     validate_release,
 )
 from litclock.runtime_bundle import (
@@ -96,6 +103,16 @@ def test_manifest_round_trip_requires_every_minute_and_preserves_shared_asset(
     assert len(loaded.minutes) == 1440
     assert len(loaded.quotes) == 1
     assert all(ids == (1,) for ids in loaded.minutes.values())
+
+
+def test_incremental_bundle_cache_reuses_only_sha256_verified_frames(tmp_path: Path) -> None:
+    manifest = _bundle(tmp_path)
+
+    assert _valid_cached_quote_ids(tmp_path, manifest) == {1}
+
+    frame = tmp_path / manifest.quotes[1].frame
+    frame.write_bytes(b"x" * frame.stat().st_size)
+    assert _valid_cached_quote_ids(tmp_path, manifest) == set()
 
 
 def test_minute_window_and_date_assets_cross_midnight_without_timezone_rules() -> None:
@@ -227,6 +244,47 @@ def test_native_release_packages_binary_and_preserves_shell_fallback(tmp_path: P
     (release / "bin/litclock-native").write_bytes(b"corrupt-native")
     with pytest.raises(DeploymentError, match="native runtime digest mismatch"):
         validate_release(release)
+
+
+def test_production_release_is_minimal_and_autostart_is_persistent(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source"
+    mount = tmp_path / "mount"
+    native = tmp_path / "litclock-native"
+    mount.mkdir()
+    native.write_bytes(b"native-test-binary")
+    native.chmod(0o755)
+    _bundle(source, version="production-v1")
+
+    deploy_bundle(
+        source,
+        mount,
+        project,
+        require_kindle=False,
+        native_binary=native,
+        production=True,
+    )
+    release = mount / "literary-clock/runtime/releases/production-v1"
+    metadata = dict(
+        line.split("\t", 1) for line in (release / "release.meta").read_text().splitlines()
+    )
+
+    assert metadata["deployment_profile"] == "production"
+    assert (release / "boot/autostart.sh").is_file()
+    assert not (release / "boot/emergency.sh").exists()
+    assert not (release / "bin/literary-clock-pilot.sh").exists()
+    assert not (release / "bin/literary-clock-time-jump-test.sh").exists()
+    assert not (release / "bin/literary-clock-power-study-start.sh").exists()
+    assert (release / "bin/litclock-native").is_file()
+    assert (release / "bin/literary-clock-runtime.sh").is_file()
+
+    assert set_production_boot_hook(mount, enabled=True, require_kindle=False) == "enabled"
+    hook = mount / "emergency.sh"
+    assert hook.read_bytes() == (release / "boot/autostart.sh").read_bytes()
+    assert "emergency.sh.used" not in hook.read_text()
+    assert set_production_boot_hook(mount, enabled=True, require_kindle=False) == "enabled"
+    assert set_production_boot_hook(mount, enabled=False, require_kindle=False) == "disabled"
+    assert not hook.exists()
 
 
 def test_boot_hook_is_explicit_reversible_and_uses_active_release(tmp_path: Path) -> None:

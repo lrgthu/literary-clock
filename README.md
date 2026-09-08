@@ -574,7 +574,9 @@ Deploying is a separate, non-scheduling operation:
 ```bash
 uv run python scripts/deploy_pw4_bundle.py \
   --mount /Volumes/Kindle \
-  --bundle data/generated/pw4-v1-001
+  --bundle data/generated/pw4-v1-001 \
+  --release-version literary-clock-v1 \
+  --production-release
 
 uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --rollback
 ```
@@ -598,8 +600,18 @@ tested PW4/firmware; a long five-minute target became stale until USB wake. See
 [`PHASE4B2_POWER_LIFECYCLE_REPORT.md`](docs/reports/PHASE4B2_POWER_LIFECYCLE_REPORT.md) for the
 measured cadence matrix and current deployment boundary.
 
-The reversible user-storage reboot-test hook is always opt-in, self-disarms before launch, and can
-be disabled without a rootfs change:
+The final appliance uses a persistent, checksummed KMC user-storage hook. It resolves the active
+release, validates it before the framework is paused, and calls the idempotent exact-mode service:
+
+```bash
+uv run python scripts/deploy_pw4_bundle.py \
+  --mount /Volumes/Kindle --enable-production-autostart
+uv run python scripts/deploy_pw4_bundle.py \
+  --mount /Volumes/Kindle --disable-production-autostart
+```
+
+The reversible reboot-test hook remains available for bounded qualification work and self-disarms
+before launch:
 
 ```bash
 uv run python scripts/deploy_pw4_bundle.py --mount /Volumes/Kindle --enable-boot-hook

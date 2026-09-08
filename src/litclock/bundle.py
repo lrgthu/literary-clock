@@ -285,6 +285,17 @@ def _even_sample(values: list[int], count: int) -> list[int]:
     return [values[round(index * (len(values) - 1) / (count - 1))] for index in range(count)]
 
 
+def _valid_cached_quote_ids(output: Path, manifest: BundleManifest) -> set[int]:
+    """Return cached frames whose size and recorded SHA-256 still match."""
+    return {
+        quote_id
+        for quote_id, record in manifest.quotes.items()
+        if (output / record.frame).is_file()
+        and (output / record.frame).stat().st_size == record.byte_size
+        and sha256_file(output / record.frame) == record.sha256
+    }
+
+
 def build_pw4_bundle(
     connection: sqlite3.Connection,
     output: Path,
@@ -316,13 +327,7 @@ def build_pw4_bundle(
             cached_manifest is not None
             and cached_manifest.metadata.get("renderer_preset") == PW4_V1_RENDER_CONFIG.name
         ):
-            cached_quote_ids = {
-                quote_id
-                for quote_id, record in cached_manifest.quotes.items()
-                if (output / record.frame).is_file()
-                and (output / record.frame).stat().st_size == record.byte_size
-                and sha256_file(output / record.frame) == record.checksum
-            }
+            cached_quote_ids = _valid_cached_quote_ids(output, cached_manifest)
     safe: dict[int, object] = {}
     for quote_id, quote in quotes.items():
         if quote_id in cached_quote_ids:

@@ -6,7 +6,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from litclock.deploy import deploy_bundle, rollback_bundle, set_boot_hook
+from litclock.deploy import (
+    deploy_bundle,
+    rollback_bundle,
+    set_boot_hook,
+    set_production_boot_hook,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,6 +32,21 @@ def main() -> int:
         action="store_true",
         help="disarm the one-shot KMC reboot hook",
     )
+    group.add_argument(
+        "--enable-production-autostart",
+        action="store_true",
+        help="enable the persistent production KMC startup hook",
+    )
+    group.add_argument(
+        "--disable-production-autostart",
+        action="store_true",
+        help="disable the persistent production KMC startup hook",
+    )
+    parser.add_argument(
+        "--production-release",
+        action="store_true",
+        help="package only production runtime/recovery files",
+    )
     parser.add_argument(
         "--release-version",
         help="versioned code+asset release name (defaults to the bundle asset-set version)",
@@ -44,6 +64,12 @@ def main() -> int:
     elif args.disable_boot_hook:
         result = set_boot_hook(args.mount, enabled=False)
         print(f"Literary Clock boot hook is {result}")
+    elif args.enable_production_autostart:
+        result = set_production_boot_hook(args.mount, enabled=True)
+        print(f"Literary Clock production autostart is {result}")
+    elif args.disable_production_autostart:
+        result = set_production_boot_hook(args.mount, enabled=False)
+        print(f"Literary Clock production autostart is {result}")
     elif args.rollback:
         version = rollback_bundle(args.mount)
         print(f"Rolled back active Kindle bundle to {version}")
@@ -54,6 +80,7 @@ def main() -> int:
             PROJECT_ROOT,
             release_version=args.release_version,
             native_binary=args.native_binary,
+            production=args.production_release,
         )
         print(f"Activated Kindle bundle {version}")
     return 0

@@ -31,11 +31,20 @@ RUNTIME_SOURCES = {
 CORE_RUNTIME_SOURCES = {
     "literary-clock-display.sh",
     "literary-clock-runtime.sh",
-    "literary-clock-pilot.sh",
-    "literary-clock-time-jump-test.sh",
     "literary-clock-power.sh",
-    "literary-clock-power-study-start.sh",
-    "literary-clock-power-study-stop.sh",
+}
+PRODUCTION_RUNTIME_SOURCES = {
+    name: path
+    for name, path in RUNTIME_SOURCES.items()
+    if name
+    in {
+        "literary-clock-display.sh",
+        "literary-clock-runtime.sh",
+        "literary-clock-power.sh",
+        "literary-clock-validate-release.sh",
+        "literary-clock-service-start.sh",
+        "literary-clock-service-stop.sh",
+    }
 }
 STABLE_LAUNCHERS = {
     "literary-clock-launch-current.sh": Path("kindle/runtime/literary-clock-launch-current.sh"),
@@ -47,6 +56,7 @@ STABLE_LAUNCHERS = {
     ),
 }
 BOOT_HOOK_SOURCE = Path("kindle/runtime/literary-clock-boot-once.sh")
+PRODUCTION_BOOT_HOOK_SOURCE = Path("kindle/runtime/literary-clock-boot-production.sh")
 NATIVE_RUNTIME_NAME = "litclock-native"
 NATIVE_RUNTIME_VERSION = "0.1.0-scaffold"
 NATIVE_ARCHITECTURE = "armv7-eabi5-hard-float-static"
@@ -97,6 +107,7 @@ def _write_release_metadata(
     version: str,
     corpus_fingerprint: str,
     native_binary: Path | None,
+    production: bool,
 ) -> None:
     native_metadata: tuple[str, ...] = ()
     if native_binary is not None:
@@ -114,6 +125,7 @@ def _write_release_metadata(
                 f"release_version\t{version}\n",
                 "renderer_preset\tpw4-v1\n",
                 f"corpus_fingerprint\t{corpus_fingerprint}\n",
+                f"deployment_profile\t{'production' if production else 'development'}\n",
                 *(native_metadata or ("runtime_engine\tshell\n",)),
             )
         ),
@@ -251,6 +263,7 @@ def deploy_bundle(
     require_kindle: bool = True,
     release_version: str | None = None,
     native_binary: Path | None = None,
+    production: bool = False,
 ) -> str:
     """Stage, fully validate, and atomically activate matching code plus assets."""
     source = source.resolve()
@@ -288,7 +301,8 @@ def deploy_bundle(
     _copy_bundle(source, staging / "bundle")
     binary_dir = staging / "bin"
     binary_dir.mkdir()
-    for name, relative in RUNTIME_SOURCES.items():
+    runtime_sources = PRODUCTION_RUNTIME_SOURCES if production else RUNTIME_SOURCES
+    for name, relative in runtime_sources.items():
         source_script = project_root / relative
         target = binary_dir / name
         shutil.copyfile(source_script, target)
@@ -300,13 +314,21 @@ def deploy_bundle(
         staged_native.chmod(0o755)
     boot_dir = staging / "boot"
     boot_dir.mkdir()
-    shutil.copyfile(project_root / BOOT_HOOK_SOURCE, boot_dir / "emergency.sh")
-    (boot_dir / "emergency.sh").chmod(0o755)
+    if production:
+        shutil.copyfile(
+            project_root / PRODUCTION_BOOT_HOOK_SOURCE,
+            boot_dir / "autostart.sh",
+        )
+        (boot_dir / "autostart.sh").chmod(0o755)
+    else:
+        shutil.copyfile(project_root / BOOT_HOOK_SOURCE, boot_dir / "emergency.sh")
+        (boot_dir / "emergency.sh").chmod(0o755)
     _write_release_metadata(
         staging,
         version,
         manifest.metadata.get("corpus_fingerprint", ""),
         staged_native,
+        production,
     )
     _remove_appledouble(staging)
     _write_release_checksums(staging)
@@ -409,6 +431,58 @@ def set_boot_hook(
         target.unlink()
     else:
         os.replace(target, disabled)
+    if hasattr(os, "sync"):
+        os.sync()
+    return "disabled"
+
+
+def set_production_boot_hook(
+    mount: Path,
+    *,
+    enabled: bool,
+    require_kindle: bool = True,
+) -> str:
+    """Enable or disable the persistent, checksummed production KMC hook."""
+    mount = mount.resolve()
+    if require_kindle and not (mount / "system").is_dir():
+        raise DeploymentError(f"target does not look like USB-visible Kindle storage: {mount}")
+    runtime_root = _runtime_root(mount)
+    target = mount / "emergency.sh"
+    if enabled:
+        current = runtime_root / "current-release"
+        if not current.is_file():
+            raise DeploymentError("current release pointer is missing")
+        version = _safe_version(current.read_text(encoding="utf-8").splitlines()[0])
+        release = runtime_root / "releases" / version
+        validate_release(release)
+        metadata = _read_metadata(release / "release.meta")
+        if metadata.get("deployment_profile") != "production":
+            raise DeploymentError("active release is not a production release")
+        source = release / "boot" / "autostart.sh"
+        if not source.is_file():
+            raise DeploymentError("active release production autostart hook is missing")
+        if target.exists():
+            if not target.is_file() or sha256_file(target) != sha256_file(source):
+                raise DeploymentError("an unrelated /mnt/us/emergency.sh already exists")
+            return "enabled"
+        staging = mount / ".literary-clock-emergency.sh.staging"
+        if staging.exists():
+            staging.unlink()
+        shutil.copyfile(source, staging)
+        staging.chmod(0o755)
+        os.replace(staging, target)
+        if hasattr(os, "sync"):
+            os.sync()
+        return "enabled"
+
+    if not target.exists():
+        return "disabled"
+    current = runtime_root / "current-release"
+    version = _safe_version(current.read_text(encoding="utf-8").splitlines()[0])
+    source = runtime_root / "releases" / version / "boot" / "autostart.sh"
+    if not source.is_file() or not target.is_file() or sha256_file(target) != sha256_file(source):
+        raise DeploymentError("refusing to remove an unrelated /mnt/us/emergency.sh")
+    target.unlink()
     if hasattr(os, "sync"):
         os.sync()
     return "disabled"

@@ -101,6 +101,24 @@ bridge runs that path at `framework_ready`; the hook first moves itself to
 next boot. Disabling moves an armed hook out of the KMC path. Neither operation alters the root
 filesystem. This is a bounded reboot-test mechanism, not persistent production startup.
 
+The final appliance release is packaged with `--production-release`, which omits pilot,
+time-jump, power-study, and qualification helpers. After activation, persistent KMC autostart is
+managed explicitly:
+
+```bash
+uv run python scripts/deploy_pw4_bundle.py \
+  --mount /Volumes/Kindle \
+  --bundle data/generated/literary-clock-v1 \
+  --release-version literary-clock-v1 \
+  --production-release
+uv run python scripts/deploy_pw4_bundle.py \
+  --mount /Volumes/Kindle --enable-production-autostart
+```
+
+The production hook remains at `/mnt/us/emergency.sh` across boots, bounds its boot log, and calls
+the same idempotent service launcher used by the Library control. Disable it with
+`--disable-production-autostart`; no root filesystem file is modified.
+
 The start path validates the full release and scheduler before pausing `awesome`/`cvm`. The stop
 path resumes both processes, restores the original `preventScreenSaver` value, and explicitly asks
 `appmgrd` to repaint the modern KPP Home view; a legacy Home URI is retained as fallback.
