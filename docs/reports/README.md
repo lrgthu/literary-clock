@@ -27,6 +27,10 @@ physical PW4 native-engine cutover.
 offline minute updates, midnight rollover, bounded history and logs, fallback interoperability, and
 native reboot recovery.
 
+`V1_PRODUCTION_DEPLOYMENT.md` records the final named release, device cleanup, persistent autostart
+configuration, recovery inventory, and the operator's decision to leave the successful production
+run undisturbed instead of replaying a final reboot.
+
 `PHASE3_RENDER_REPORT.md` is the historical pre-finalization renderer report; it records the
 long-quote/data-handoff failure that the finalization pass later traced and fixed. Use
 `PHASE3_RENDER_FINALIZATION_REPORT.md`, `PHASE3_1_CLEANUP_REPORT.md`,
